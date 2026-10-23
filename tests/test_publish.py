@@ -92,3 +92,24 @@ def test_selectors_expand_and_override(tmp_path):
     assert sel["details"]["title"] == ["#my-title"] and sel["details"]["subtitle"] == DEFAULT_SELECTORS["details"]["subtitle"]
     assert sel["bookshelf_url"] == "https://example.test/shelf"
     assert "save-and-publish" in dump_default_yaml()
+
+
+def test_flow_records_errors_instead_of_crashing(tmp_path):
+    from kdp_studio.publish.browser import BrowserSession
+    from kdp_studio.publish.flow import ScriptedApprover, run_flow
+
+    book = load_book(ROOT / "examples" / "lantern-lane" / "book.yaml")
+    session = BrowserSession(tmp_path / "profile")  # never opened: no browser needed
+    assert session.is_alive() is False
+
+    def boom(url):
+        raise RuntimeError("Target page, context or browser has been closed")
+
+    session.goto = boom
+    store = PublishStore(tmp_path / "p.sqlite")
+    res = run_flow(book, "paperback", session, load_selectors(None), ScriptedApprover([]), store, start_url="file:///mock.html")
+    assert res.status == "error" and res.events == ["error"] and res.finished
+    assert any("RuntimeError: Target page" in n for n in res.notes)
+    assert store.get_title(book.id, "paperback") is None  # nothing was created on KDP
+    store.close()
+

@@ -85,7 +85,9 @@ class Flow:
     def _gate(self, prompt: str) -> str:
         ans = self.approver.ask(prompt).strip().lower()
         if ans in STOP_WORDS:
-            raise FlowStopped()
+            raise FlowStopped("stopped by the operator")
+        if not self.s.is_alive():
+            raise FlowStopped("the browser window was closed while the tool was waiting for your review")
         return ans
 
     def _event(self, event: str, notes: str | None = None) -> None:
@@ -108,7 +110,7 @@ class Flow:
                 self._gate("Amazon is asking you to sign in. Sign in (and complete any OTP) in the browser window, then press Enter (q to stop):")
                 continue
             return
-        raise FlowStopped()
+        raise FlowStopped("sign-in or CAPTCHA page still showing after 20 rounds")
 
     # ---------------------------------------------------------------- steps
     def create_title(self) -> None:
@@ -367,9 +369,20 @@ class Flow:
                     break
             else:
                 res.status = "stopped_before_publish"
-        except FlowStopped:
+        except FlowStopped as stop:
             res.status = "aborted"
-            self._event("aborted")
+            if str(stop):
+                res.notes.append(f"Stopped: {stop}")
+            self._event("aborted", str(stop) or None)
+        except Exception as exc:  # noqa: BLE001 - keep the run log (flow.json) even when KDP or the browser misbehaves
+            log.exception("assisted flow failed")
+            res.status = "error"
+            msg = f"{type(exc).__name__}: {str(exc).splitlines()[0][:200]}" if str(exc).strip() else type(exc).__name__
+            res.notes.append(f"Flow stopped by an error: {msg}")
+            try:
+                self._event("error", msg)
+            except Exception:  # noqa: BLE001
+                pass
         res.finished = dt.datetime.now(dt.timezone.utc).isoformat()
         return res
 

@@ -465,6 +465,10 @@ def _run_publish_cli(book_path: Path, fmt: str, args) -> int:
     print(f"Result: {result.status} | filled {len(result.filled)} field(s), {len(result.unfilled)} to enter by hand")
     for fld, val in result.unfilled:
         print(f"  - {fld}: {val}")
+    if result.status in ("error", "aborted", "stopped_before_publish"):
+        for note in result.notes[-3:]:
+            print(f"  ! {note}")
+        print("  (details in flow.json; re-run with -v for the full traceback)")
     return 0 if result.status in ("submitted", "draft") else 1
 
 
@@ -980,6 +984,14 @@ def main(argv: list[str] | None = None) -> int:
         return args.func(args)
     except (ValueError, FileNotFoundError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        print("interrupted", file=sys.stderr)
+        return 130
+    except Exception as exc:  # noqa: BLE001 - e.g. Playwright errors; keep the message readable, -v shows the traceback
+        if args.verbose:
+            raise
+        print(f"error: {type(exc).__name__}: {str(exc).splitlines()[0][:300]} (re-run with -v for the traceback)", file=sys.stderr)
         return 2
 
 

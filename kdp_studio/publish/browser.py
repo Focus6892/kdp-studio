@@ -105,6 +105,16 @@ class BrowserSession:
     def url(self) -> str:
         return self.page.url
 
+    def is_alive(self) -> bool:
+        """False once the operator closed the browser window (or the session was never opened)."""
+        if self._ctx is None:
+            return False
+        try:
+            pages = self._ctx.pages
+            return bool(pages) and not pages[0].is_closed()
+        except Exception:  # noqa: BLE001 - context already closed
+            return False
+
     def goto(self, url: str) -> None:
         self.page.goto(url, wait_until="domcontentloaded")
 

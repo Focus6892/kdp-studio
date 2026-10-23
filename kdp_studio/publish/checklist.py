@@ -75,6 +75,8 @@ def build_checklist(book: Book, fmt: str, quota: QuotaStatus | None = None) -> s
     lines += [f"  - {c}" for c in md.categories]
     lines.append(f"- Low-content book: {'YES — tick the box' if md.low_content else 'No — leave unticked (coloring/activity and text books are not low-content)'}")
     lines.append(f"- Large-print book (text 16 pt or larger): {'YES — tick the box' if md.large_print else 'No'}")
+    lines.append("- Series / Contributors: leave empty (optional)")
+    lines.append("- Publication date and Release date: keep KDP's defaults (same date; release for sale now)")
     lines.append("")
 
     lines += ["## 2. Content", ""]
