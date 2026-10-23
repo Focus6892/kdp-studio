@@ -1,0 +1,95 @@
+# Single source of truth for one title. Run:  python -m kdp_studio build examples/bold-easy-flowers/book.yaml
+id: cb-bold-easy-flowers-001
+type: coloring
+niche: "bold and easy flowers coloring book for adults and seniors"
+formats: [paperback]
+
+metadata:
+  title: "Bold & Easy Flowers"
+  subtitle: "Large Print Coloring Book for Adults and Seniors with 30 Simple Floral Designs"
+  author: "Mia Hartwell"
+  language: English
+  low_content: false          # KDP: coloring books are NOT low-content
+  description_html: |
+    <h4>Relax with 30 bold, easy flower designs</h4>
+    <p>Thick outlines, large shapes and plenty of white space make every page a calm, confident coloring session, whether you are a beginner, a senior or simply want to unwind after a long day.</p>
+    <ul>
+      <li>30 single-sided designs so markers never bleed through</li>
+      <li>Large 8.5 x 11 inch pages with wide margins</li>
+      <li>Bold lines designed for low vision and tired eyes</li>
+      <li>Test page to try your pencils and markers</li>
+    </ul>
+    <p>Pick up your favorite colors and let the garden bloom.</p>
+  keywords:
+    - "large print coloring book"
+    - "easy coloring book adults"
+    - "flower coloring book seniors"
+    - "bold line coloring pages"
+    - "relaxing coloring book women"
+    - "simple designs beginners"
+    - "stress relief coloring"
+  categories:
+    - "Crafts, Hobbies & Home > Crafts & Hobbies > Coloring Books for Grown-Ups"
+    - "Self-Help > Stress Management"
+    - "Arts & Photography > Drawing > Coloring Books"
+
+print:
+  trim: 8.5x11
+  paper: white_bw
+  bleed: true
+  cover_finish: matte
+  isbn: kdp_free
+
+interior:
+  type: coloring
+  theme: "bold and easy flowers"
+  audience: "adults and seniors, beginners, low vision"
+  images: 30
+  single_sided: true
+  back_page: blank
+  front_matter: [title, copyright, belongs_to, test_colors]
+  back_matter: [thank_you, blank]
+  source:
+    provider: placeholder      # placeholder | folder | openai
+    seed: 7
+    size: 1024x1536
+  cleanup:
+    threshold: 160
+    min_line_px: 4
+    despeckle: 1
+    art_margin_in: 0.5
+  dedupe:
+    enabled: true
+    max_distance: 10
+    library: library/image_hashes.json
+  qa:
+    heuristic: true
+    claude: false              # set true + ANTHROPIC_API_KEY for vision review
+  prompts_with_claude: false   # set true + ANTHROPIC_API_KEY for varied subjects
+
+cover:
+  art:
+    provider: placeholder      # placeholder | file | openai
+    seed: 11
+  palette:
+    background: "#FBF3E4"
+    accent: "#C94C4C"
+    text: "#2B2B2B"
+    title_text: "#FFFFFF"
+  back_blurb: "Thirty bold flower designs with thick, forgiving outlines and large shapes. Each illustration sits on its own page with a blank back, so pencils, gel pens and markers all stay where you put them. Made for relaxed afternoons, shaky hands and anyone who wants a garden that always blooms."
+  back_bullets:
+    - "30 single-sided pages"
+    - "Bold, easy lines for beginners and seniors"
+    - "Large 8.5 x 11 format"
+    - "Color test page included"
+  barcode_box: true
+  debug_guides: true
+
+pricing:
+  marketplace: amazon.com
+  list_price: 9.99             # 60% tier starts at $9.99 on Amazon.com
+
+provenance:
+  text: human
+  interior_images: ai_generated
+  cover_art: ai_generated

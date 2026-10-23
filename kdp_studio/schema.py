@@ -1,0 +1,286 @@
+"""book.yaml schema: the single source of truth for one title."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Annotated, Literal, Union
+
+import yaml
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from . import specs
+
+Origin = Literal["human", "ai_assisted", "ai_generated"]
+
+DEFAULT_STYLE_PROMPT = (
+    "black and white line art coloring book page, clean bold outlines, no shading, "
+    "no gray, pure white background, no text, no watermark, high contrast, centered composition"
+)
+DEFAULT_NEGATIVE_PROMPT = (
+    "color, shading, gradients, gray fill, text, letters, numbers, watermark, signature, blurry, photo"
+)
+
+
+class Provenance(BaseModel):
+    """Who/what produced each kind of content. Drives the KDP AI disclosure answers."""
+
+    text: Origin = "human"
+    interior_images: Origin = "human"
+    cover_art: Origin = "human"
+    translation: Literal["none", "human", "ai_generated"] = "none"
+    notes: str | None = None
+
+
+class AgeRange(BaseModel):
+    min: int = Field(ge=0, le=18)
+    max: int = Field(ge=0, le=18)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> "AgeRange":
+        if self.min > self.max:
+            raise ValueError("reading_age.min must be <= reading_age.max")
+        return self
+
+
+class Series(BaseModel):
+    name: str
+    number: int | None = Field(default=None, ge=1)
+
+
+class Metadata(BaseModel):
+    title: str = Field(min_length=1)
+    subtitle: str | None = None
+    author: str = Field(min_length=1)
+    contributors: list[str] = Field(default_factory=list)
+    description_html: str = Field(min_length=1)
+    keywords: list[str] = Field(default_factory=list, max_length=7)
+    categories: list[str] = Field(default_factory=list, max_length=3)
+    reading_age: AgeRange | None = None
+    series: Series | None = None
+    language: str = "English"
+    low_content: bool = False
+    sexually_explicit: bool = False
+    edition: str | None = None
+
+    @property
+    def full_title(self) -> str:
+        return f"{self.title}: {self.subtitle}" if self.subtitle else self.title
+
+
+class PrintSpec(BaseModel):
+    trim: str = "8.5x11"
+    paper: specs.PaperType = "white_bw"
+    bleed: bool = True
+    cover_finish: Literal["matte", "glossy"] = "matte"
+    isbn: Literal["kdp_free", "own", "none"] = "kdp_free"
+    isbn_number: str | None = None
+
+    @field_validator("trim")
+    @classmethod
+    def _known_trim(cls, v: str) -> str:
+        specs.get_trim(v)
+        return v
+
+    @property
+    def trim_size(self) -> specs.Trim:
+        return specs.get_trim(self.trim)
+
+
+class ImageSource(BaseModel):
+    provider: Literal["placeholder", "folder", "openai"] = "placeholder"
+    path: str | None = None
+    model: str | None = None
+    size: str = "1024x1536"
+    seed: int = 7
+
+    @model_validator(mode="after")
+    def _folder_needs_path(self) -> "ImageSource":
+        if self.provider == "folder" and not self.path:
+            raise ValueError("source.path is required when provider is 'folder'")
+        return self
+
+
+class CleanupOptions(BaseModel):
+    threshold: int = Field(160, ge=1, le=254)
+    min_line_px: int = Field(3, ge=1, le=15)
+    despeckle: int = Field(1, ge=0, le=5)
+    autocontrast: bool = True
+    art_margin_in: float = Field(0.5, ge=0.25, le=2.0)
+
+
+class DedupeOptions(BaseModel):
+    """Duplicate = pHash distance <= max_distance AND density correlation >= min_correlation."""
+
+    enabled: bool = True
+    max_distance: int = Field(6, ge=0, le=32)
+    min_correlation: float = Field(0.985, ge=0.0, le=1.0)
+    library: str = "library/image_hashes.json"
+
+
+class QAOptions(BaseModel):
+    heuristic: bool = True
+    claude: bool = False
+    model: str = "claude-opus-5-5"
+    min_ink_ratio: float = Field(0.01, ge=0.0, le=1.0)
+    max_ink_ratio: float = Field(0.30, ge=0.0, le=1.0)
+    max_retries: int = Field(2, ge=0, le=5)
+
+
+FrontMatterItem = Literal["title", "copyright", "belongs_to", "test_colors", "blank"]
+BackMatterItem = Literal["thank_you", "test_colors", "blank"]
+
+
+class ColoringInterior(BaseModel):
+    type: Literal["coloring"] = "coloring"
+    theme: str = Field(min_length=1)
+    audience: str = "adults"
+    style_prompt: str = DEFAULT_STYLE_PROMPT
+    negative_prompt: str = DEFAULT_NEGATIVE_PROMPT
+    images: int = Field(30, ge=1, le=400)
+    single_sided: bool = True
+    back_page: Literal["blank", "test_colors"] = "blank"
+    front_matter: list[FrontMatterItem] = Field(
+        default_factory=lambda: ["title", "copyright", "belongs_to", "blank"]
+    )
+    back_matter: list[BackMatterItem] = Field(default_factory=lambda: ["thank_you", "blank"])
+    copyright_notice: str | None = None
+    source: ImageSource = Field(default_factory=ImageSource)
+    cleanup: CleanupOptions = Field(default_factory=CleanupOptions)
+    dedupe: DedupeOptions = Field(default_factory=DedupeOptions)
+    qa: QAOptions = Field(default_factory=QAOptions)
+    prompts_with_claude: bool = False
+    prompts_model: str = "claude-opus-5-5"
+
+    @model_validator(mode="after")
+    def _images_start_on_recto(self) -> "ColoringInterior":
+        # Image pages must start on a right-hand (odd) page.
+        if len(self.front_matter) % 2 == 1:
+            self.front_matter = [*self.front_matter, "blank"]
+        return self
+
+    def planned_pages(self, image_count: int | None = None) -> int:
+        n = self.images if image_count is None else image_count
+        per_image = 2 if self.single_sided else 1
+        total = len(self.front_matter) + n * per_image + len(self.back_matter)
+        total = max(total, specs.MIN_PAGES)
+        return total + (total % 2)
+
+
+class StoryInterior(BaseModel):
+    type: Literal["story"] = "story"
+    manuscript_dir: str
+    # Phase 2: markdown -> EPUB + print PDF
+
+
+Interior = Annotated[Union[ColoringInterior, StoryInterior], Field(discriminator="type")]
+
+
+class ArtSource(BaseModel):
+    provider: Literal["placeholder", "file", "openai"] = "placeholder"
+    path: str | None = None
+    prompt: str | None = None
+    model: str | None = None
+    size: str = "1024x1536"
+    seed: int = 11
+
+    @model_validator(mode="after")
+    def _file_needs_path(self) -> "ArtSource":
+        if self.provider == "file" and not self.path:
+            raise ValueError("cover.art.path is required when provider is 'file'")
+        return self
+
+
+class Palette(BaseModel):
+    background: str = "#F6E7C1"
+    accent: str = "#C94C4C"
+    text: str = "#2B2B2B"
+    title_text: str = "#FFFFFF"
+    spine: str | None = None
+    back: str | None = None
+
+
+class CoverSpec(BaseModel):
+    art: ArtSource = Field(default_factory=ArtSource)
+    palette: Palette = Field(default_factory=Palette)
+    title_font: str | None = None
+    body_font: str | None = None
+    spine_text: bool | None = None  # None = automatic (only when pages >= 79)
+    back_blurb: str | None = None
+    back_bullets: list[str] = Field(default_factory=list)
+    barcode_box: bool = True
+    debug_guides: bool = False
+
+
+class Pricing(BaseModel):
+    marketplace: Literal["amazon.com"] = "amazon.com"
+    list_price: float = Field(gt=0)
+    ebook_list_price: float | None = Field(default=None, gt=0)
+
+
+class Book(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str = Field(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    type: Literal["coloring", "story"]
+    niche: str | None = None
+    formats: list[Literal["paperback", "hardcover", "ebook"]] = Field(default_factory=lambda: ["paperback"])
+    metadata: Metadata
+    print_: PrintSpec = Field(default_factory=PrintSpec, alias="print")
+    interior: Interior
+    cover: CoverSpec = Field(default_factory=CoverSpec)
+    pricing: Pricing
+    provenance: Provenance = Field(default_factory=Provenance)
+    output_dir: str = "build"
+    source_path: Path | None = Field(default=None, exclude=True)
+
+    @model_validator(mode="after")
+    def _types_match(self) -> "Book":
+        if self.interior.type != self.type:
+            raise ValueError(f"book.type is '{self.type}' but interior.type is '{self.interior.type}'")
+        return self
+
+    @property
+    def book_dir(self) -> Path:
+        return self.source_path.parent if self.source_path else Path.cwd()
+
+    def resolve(self, p: str | Path) -> Path:
+        p = Path(p)
+        return p if p.is_absolute() else (self.book_dir / p)
+
+    @property
+    def build_dir(self) -> Path:
+        return self.resolve(self.output_dir)
+
+    def ai_disclosure(self) -> dict[str, str]:
+        """Answers for KDP's 'AI-Generated Content' section, derived from provenance."""
+        p = self.provenance
+        images = "ai_generated" if "ai_generated" in (p.interior_images, p.cover_art) else (
+            "ai_assisted" if "ai_assisted" in (p.interior_images, p.cover_art) else "human"
+        )
+        used_ai = any(x == "ai_generated" for x in (p.text, images, p.translation))
+
+        def label(origin: str) -> str:
+            return {
+                "ai_generated": "AI-generated — MUST be declared",
+                "ai_assisted": "AI-assisted — no declaration required",
+                "human": "None",
+                "none": "None",
+            }[origin]
+
+        return {
+            "Did you use AI tools in creating texts, images and/or translations?": "Yes" if used_ai else "No",
+            "Text": label(p.text),
+            "Images": label(images),
+            "Translations": label(p.translation),
+        }
+
+
+def load_book(path: str | Path) -> Book:
+    path = Path(path).resolve()
+    with path.open("r", encoding="utf-8") as fh:
+        data = yaml.safe_load(fh)
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} does not contain a YAML mapping")
+    book = Book.model_validate(data)
+    book.source_path = path
+    return book
