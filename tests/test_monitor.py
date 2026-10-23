@@ -69,3 +69,21 @@ def test_title_status_and_mark_adds_to_watchlist(tmp_path):
     paths = write_monitor_report(text, tmp_path / "out", now)
     assert paths["latest"].is_file()
     store.close()
+
+
+def test_mark_counts_hand_finished_titles_toward_quota(tmp_path):
+    import datetime as dt
+
+    from kdp_studio.publish.quota import quota_status
+    from kdp_studio.publish.store import PublishStore
+
+    store = PublishStore(tmp_path / "p.sqlite")
+    now = dt.datetime(2026, 10, 23, 8, tzinfo=dt.timezone.utc)
+    mark_title(store, "by-hand", "paperback", "draft", title="Finished by hand", now=now)
+    q = quota_status(store, now)["paperback"]
+    assert q.created == 1 and q.submitted == 0
+    mark_title(store, "by-hand", "paperback", "in_review", now=now + dt.timedelta(hours=1))
+    q = quota_status(store, now)["paperback"]
+    assert q.created == 1 and q.submitted == 1  # no duplicate 'created'
+    store.close()
+

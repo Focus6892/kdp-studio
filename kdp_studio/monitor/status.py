@@ -47,6 +47,13 @@ def title_rows(store: PublishStore, now: dt.datetime | None = None) -> list[dict
 def mark_title(store: PublishStore, book_id: str, fmt: str, status: str, *, asin: str | None = None, title: str | None = None, watchlist_path: Path | None = None, book_path: str | None = None, now: dt.datetime | None = None) -> dict:
     row = store.upsert_title(book_id, fmt, status, title=title, asin=asin, ts=now)
     store.add_event(book_id, fmt, f"marked_{status}", book_path=book_path, asin=asin, ts=now)
+    # A title marked draft/in_review/live exists on KDP even when the human finished it by hand,
+    # so make sure the weekly quota counts it (one 'created' / 'submitted' event per title and format).
+    have = {e["event"] for e in store.events(book_id) if e["fmt"] == fmt}
+    if status in ("draft", "in_review", "live") and "created" not in have:
+        store.add_event(book_id, fmt, "created", book_path=book_path, notes="recorded via publish mark", ts=now)
+    if status in ("in_review", "live") and "submitted" not in have:
+        store.add_event(book_id, fmt, "submitted", book_path=book_path, notes="recorded via publish mark", ts=now)
     if status == "live" and asin and watchlist_path is not None:
         wl = load_watchlist(watchlist_path)
         if wl.add(WatchItem(asin=asin.upper(), label=f"{title or book_id} ({fmt})", ours=True, notes=f"book {book_id}")):
