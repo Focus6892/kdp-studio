@@ -19,8 +19,10 @@ python -m pytest
 Trên Windows nếu `venv` lỗi `ensurepip` (bản Python từ Python Install Manager), cài thẳng vào user site:
 
 ```bash
-python -m pip install --user -e ".[dev,ai]"
+python -m pip install --user -e ".[dev,ai,publish]"
 ```
+
+Sau khi cài editable, `python -m kdp_studio …` chạy được từ bất kỳ thư mục nào; dữ liệu runtime (`publishing/`, `niches/`, `watch/`, `monitor/`) luôn được ghi vào thư mục dự án chứ không phải thư mục bạn đang đứng.
 
 ## Dùng nhanh
 

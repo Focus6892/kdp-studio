@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..findings import FindingList
+from ..paths import data_path
 from ..preflight.run import run_preflight
 from ..schema import Book, load_book
 from ..util import write_json
@@ -32,8 +33,8 @@ class PublishOptions:
     fmt: str = "paperback"
     profile_dir: Path = field(default_factory=default_profile_dir)
     selectors_path: Path | None = None
-    store_path: Path = Path("publishing/publish.sqlite")
-    runs_dir: Path = Path("publishing/runs")
+    store_path: Path = field(default_factory=lambda: data_path("publishing", "publish.sqlite"))
+    runs_dir: Path = field(default_factory=lambda: data_path("publishing", "runs"))
     require_preflight: bool = True
     headless_local: bool = False
     start_url: str | None = None
