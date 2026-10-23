@@ -511,22 +511,53 @@ def cmd_publish_mark(args) -> int:
 
 
 def cmd_publish_probe(args) -> int:
-    from .publish.browser import BrowserSession
+    """Report which selectors match the live KDP page and dump its form structure (ids, names,
+    labels, option texts - never typed values) so the selector map can be corrected precisely."""
+    import datetime as dt
+
+    from .publish.browser import BrowserSession, inventory_markdown
     from .publish.flow import ConsoleApprover
     from .publish.pipeline import default_profile_dir
     from .publish.selectors import load_selectors
+    from .util import write_json
 
     sel = load_selectors(Path(args.selectors) if args.selectors else None)
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ask = ConsoleApprover().ask
+    dumps: list[Path] = []
     with BrowserSession(Path(args.profile) if args.profile else default_profile_dir(), start_url=args.url) as s:
         s.goto(args.url or sel["bookshelf_url"])
-        ConsoleApprover().ask("Navigate to the KDP page you want to probe (Details, Content or Pricing), then press Enter:")
-        for group in ("details", "content", "pricing"):
-            print(f"\n[{group}]")
-            for fld, match in s.matches(sel[group], args.format).items():
-                print(f"  {fld:26} {match or 'NO MATCH'}")
-        print("\n[page]")
-        for name in ("create_button", "signin_markers", "captcha_markers"):
-            print(f"  {name:26} {s._first_match(sel[name]) or 'no match'}")
+        print("Sign in if asked, then open the KDP page to probe (Bookshelf, Details, Content or Pricing).")
+        round_no = 0
+        while True:
+            ans = ask("Press Enter to probe the current page, or type q to finish:").strip().lower()
+            if ans in ("q", "quit", "exit"):
+                break
+            round_no += 1
+            inv = s.inventory()
+            total = sum(len(sc["elements"]) for sc in inv["scopes"])
+            print(f"\nPage: {inv.get('title')!r} — {inv.get('url')}\nFrames: {len(inv['frames'])}, form controls found: {total}")
+            for group in ("details", "content", "pricing"):
+                m = s.matches(sel[group], args.format)
+                hits = sum(1 for v in m.values() if v)
+                print(f"[{group}] {hits}/{len(m)} selector(s) match")
+                for fld, match in m.items():
+                    print(f"  {fld:26} {match or 'NO MATCH'}")
+            print("[page]")
+            for name in ("create_button", "signin_markers", "captcha_markers"):
+                print(f"  {name:26} {s._first_match(sel[name]) or 'no match'}")
+            stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+            js = out_dir / f"probe_{stamp}_{round_no}.json"
+            md = out_dir / f"probe_{stamp}_{round_no}.md"
+            write_json(js, inv)
+            md.write_text(inventory_markdown(inv), encoding="utf-8")
+            dumps += [js, md]
+            ids = [e["id"] for sc in inv["scopes"] for e in sc["elements"] if e.get("id")]
+            print(f"\nDump written: {md}\n  ({total} controls; ids seen: {', '.join(ids[:12])}{' ...' if len(ids) > 12 else ''})")
+            print("Navigate to the next tab (Details -> Content -> Pricing) and press Enter again, or q to finish.")
+    if dumps:
+        print(f"\n{len(dumps) // 2} page dump(s) in {out_dir}. Share the .md files to get the selector map corrected.")
     return 0
 
 
@@ -819,11 +850,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--watchlist", default="watch/watchlist.yaml")
     p.add_argument("--db", default="publishing/publish.sqlite")
     p.set_defaults(func=cmd_publish_mark)
-    p = psub.add_parser("probe", help="open KDP and report which selectors match the page you navigate to")
+    p = psub.add_parser("probe", help="open KDP, report which selectors match each page you navigate to and dump the form structure")
     p.add_argument("--url")
     p.add_argument("--format", default="paperback", choices=fmt_choices)
     p.add_argument("--profile")
     p.add_argument("--selectors")
+    p.add_argument("--out", default="publishing/probe", help="folder for the page dumps (.json + .md)")
     p.set_defaults(func=cmd_publish_probe)
     p = psub.add_parser("selectors", help="print (or write) the default selector map as YAML")
     p.add_argument("--out")

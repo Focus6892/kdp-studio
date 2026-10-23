@@ -108,17 +108,69 @@ class BrowserSession:
     def goto(self, url: str) -> None:
         self.page.goto(url, wait_until="domcontentloaded")
 
-    def find(self, candidates: list[str]):
-        """First candidate selector that matches at least one element, else None."""
+    def _scopes(self):
+        """Main page first, then every child frame (KDP may render parts of the form in frames)."""
         page = self.page
+        scopes = [page]
+        try:
+            scopes += [f for f in page.frames if f != page.main_frame]
+        except Exception:  # noqa: BLE001
+            pass
+        return scopes
+
+    def find(self, candidates: list[str]):
+        """First candidate selector that matches at least one element (in any frame), else None."""
         for sel in candidates:
-            try:
-                loc = page.locator(sel)
-                if loc.count() > 0:
-                    return loc.first
-            except Exception:  # noqa: BLE001 - invalid selector or detached frame
-                continue
+            for scope in self._scopes():
+                try:
+                    loc = scope.locator(sel)
+                    if loc.count() > 0:
+                        return loc.first
+                except Exception:  # noqa: BLE001 - invalid selector or detached frame
+                    continue
         return None
+
+    def inventory(self, limit: int = 600) -> dict:
+        """Structural dump of every form control and button on the page and its frames.
+        Captures ids, names, labels and option values only - never what the user typed."""
+        js = """
+        () => {
+          const q = 'input, select, textarea, button, [contenteditable="true"], a[role="button"], [role="radio"], [role="checkbox"], [role="combobox"]';
+          const els = Array.from(document.querySelectorAll(q));
+          const lab = el => { const l = el.labels && el.labels[0]; if (l) return l.textContent.trim().replace(/\\s+/g, ' ').slice(0, 100);
+                              const al = el.getAttribute('aria-labelledby'); if (al) { const t = document.getElementById(al); if (t) return t.textContent.trim().replace(/\\s+/g, ' ').slice(0, 100); } return null; };
+          return {
+            headings: Array.from(document.querySelectorAll('h1, h2, h3')).slice(0, 40).map(h => h.textContent.trim().replace(/\\s+/g, ' ').slice(0, 100)),
+            elements: els.map(el => ({
+              tag: el.tagName.toLowerCase(), type: el.getAttribute('type'), id: el.id || null, name: el.getAttribute('name'),
+              placeholder: el.getAttribute('placeholder'), aria: el.getAttribute('aria-label'), role: el.getAttribute('role'),
+              label: lab(el), text: (el.tagName === 'BUTTON' || el.tagName === 'A') ? el.textContent.trim().replace(/\\s+/g, ' ').slice(0, 80) : null,
+              option_value: (el.type === 'radio' || el.type === 'checkbox') ? el.value : null,
+              options: el.tagName === 'SELECT' ? Array.from(el.options).slice(0, 40).map(o => o.textContent.trim().slice(0, 60)) : null,
+              classes: (el.className && typeof el.className === 'string') ? el.className.trim().slice(0, 120) : null,
+              visible: !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+            }))
+          };
+        }
+        """
+        out = {"url": self.url, "title": "", "frames": [], "scopes": []}
+        try:
+            out["title"] = self.page.title()
+        except Exception:  # noqa: BLE001
+            pass
+        for idx, scope in enumerate(self._scopes()):
+            try:
+                frame_url = scope.url
+                data = scope.evaluate(js)
+            except Exception as exc:  # noqa: BLE001 - cross-origin frame or navigation in progress
+                out["frames"].append({"index": idx, "url": getattr(scope, "url", "?"), "error": str(exc).splitlines()[0][:120]})
+                continue
+            elements = data.get("elements", [])[:limit]
+            for e in elements:
+                e["frame"] = idx
+            out["frames"].append({"index": idx, "url": frame_url, "elements": len(elements), "headings": data.get("headings", [])})
+            out["scopes"].append({"frame": idx, "url": frame_url, "headings": data.get("headings", []), "elements": elements})
+        return out
 
     def fill(self, candidates: list[str], value: str) -> bool:
         loc = self.find(candidates)
@@ -270,12 +322,32 @@ class BrowserSession:
 
     def _first_match(self, cands: list[str]) -> str | None:
         for sel in cands:
-            try:
-                if self.page.locator(sel).count() > 0:
-                    return sel
-            except Exception:  # noqa: BLE001
-                continue
+            for scope in self._scopes():
+                try:
+                    if scope.locator(sel).count() > 0:
+                        return sel
+                except Exception:  # noqa: BLE001
+                    continue
         return None
+
+
+def inventory_markdown(inv: dict) -> str:
+    """Human-readable version of `BrowserSession.inventory()` for the probe dump."""
+    lines = [f"# Probe dump — {inv.get('title') or ''}", "", f"URL: {inv.get('url')}", ""]
+    for fr in inv.get("frames", []):
+        if "error" in fr:
+            lines.append(f"- frame {fr['index']}: {fr['url']} — not readable ({fr['error']})")
+        else:
+            lines.append(f"- frame {fr['index']}: {fr['url']} — {fr['elements']} control(s); headings: {' | '.join(fr.get('headings', [])[:8])}")
+    lines.append("")
+    lines.append("| frame | tag | type/role | id | name | label / text / aria / placeholder | options / value | visible |")
+    lines.append("|---|---|---|---|---|---|---|---|")
+    for sc in inv.get("scopes", []):
+        for e in sc["elements"]:
+            desc = e.get("label") or e.get("text") or e.get("aria") or e.get("placeholder") or ""
+            opts = ", ".join(e["options"][:6]) if e.get("options") else (e.get("option_value") or "")
+            lines.append(f"| {e['frame']} | {e['tag']} | {e.get('type') or e.get('role') or ''} | {e.get('id') or ''} | {e.get('name') or ''} | {desc} | {opts} | {'y' if e.get('visible') else 'n'} |")
+    return "\n".join(lines) + "\n"
 
 
 def wait_for_human(session: BrowserSession, ask: Callable[[str], str], prompt: str) -> str:

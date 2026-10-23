@@ -82,6 +82,24 @@ def test_assisted_flow_against_mock(tmp_path):
     store.close()
 
 
+def test_inventory_lists_form_controls(tmp_path):
+    from kdp_studio.publish.browser import inventory_markdown
+
+    start = (MOCK / "details.html").as_uri()
+    session = _session(tmp_path, start)
+    try:
+        session.goto(start)
+        inv = session.inventory()
+    finally:
+        session.close()
+    ids = {e["id"] for sc in inv["scopes"] for e in sc["elements"] if e.get("id")}
+    assert {"data-print-book-title", "data-print-book-keywords-6", "save-and-continue-announce", "non-public-domain"} <= ids
+    sel = next(e for sc in inv["scopes"] for e in sc["elements"] if e.get("id") == "data-print-book-language-select")
+    assert "English" in sel["options"] and sel["tag"] == "select"
+    md = inventory_markdown(inv)
+    assert "data-print-book-title" in md and "| frame |" in md
+
+
 def test_flow_stops_on_quit(tmp_path):
     book = load_book(EXAMPLE_DIR / "book.yaml")
     start = (MOCK / "details.html").as_uri()
