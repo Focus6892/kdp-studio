@@ -522,6 +522,8 @@ def cmd_publish_probe(args) -> int:
     from .publish.selectors import load_selectors
     from .util import write_json
 
+    import time
+
     sel = load_selectors(Path(args.selectors) if args.selectors else None)
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -529,15 +531,27 @@ def cmd_publish_probe(args) -> int:
     dumps: list[Path] = []
     with BrowserSession(Path(args.profile) if args.profile else default_profile_dir(), start_url=args.url) as s:
         s.goto(args.url or sel["bookshelf_url"])
-        print("Sign in if asked, then open the KDP page to probe (Bookshelf, Details, Content or Pricing).")
+        if args.auto:
+            # one-shot: wait for the page, optionally click a step/link by its text, dump, leave
+            time.sleep(args.wait)
+            if args.follow:
+                if s.click([f"a:has-text('{args.follow}')", f"text={args.follow}", f"button:has-text('{args.follow}')"]):
+                    time.sleep(args.wait)
+                else:
+                    print(f"Could not find anything to click with text {args.follow!r}; dumping the current page.")
+        else:
+            print("Sign in if asked, then open the KDP page to probe (Bookshelf, Details, Content or Pricing).")
         round_no = 0
         while True:
-            try:
-                ans = ask("Press Enter to probe the current page, or type q to finish:").strip().lower()
-            except (EOFError, KeyboardInterrupt):
+            if args.auto and round_no >= 1:
                 break
-            if ans in ("q", "quit", "exit"):
-                break
+            if not args.auto:
+                try:
+                    ans = ask("Press Enter to probe the current page, or type q to finish:").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    break
+                if ans in ("q", "quit", "exit"):
+                    break
             round_no += 1
             try:  # one failing page must never end the probe session
                 inv = s.inventory()
@@ -563,7 +577,8 @@ def cmd_publish_probe(args) -> int:
             except Exception as exc:  # noqa: BLE001
                 print(f"\nProbe of this page failed ({type(exc).__name__}: {str(exc).splitlines()[0][:200]}). Wait for the page to finish loading and press Enter to retry.")
                 continue
-            print("Navigate to the next tab (Details -> Content -> Pricing) and press Enter again, or q to finish.")
+            if not args.auto:
+                print("Navigate to the next tab (Details -> Content -> Pricing) and press Enter again, or q to finish.")
     if dumps:
         print(f"\n{len(dumps) // 2} page dump(s) in {out_dir}. Share the .md files to get the selector map corrected.")
     return 0
@@ -876,6 +891,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--profile")
     p.add_argument("--selectors")
     p.add_argument("--out", default=PUB_PROBE, help="folder for the page dumps (.json + .md)")
+    p.add_argument("--auto", action="store_true", help="no prompts: open --url, wait, optionally --follow a link, dump once and exit")
+    p.add_argument("--follow", help="with --auto: click the link/step with this text before dumping (e.g. 'Rights & Pricing')")
+    p.add_argument("--wait", type=float, default=6.0, help="with --auto: seconds to wait for the page (default 6)")
     p.set_defaults(func=cmd_publish_probe)
     p = psub.add_parser("selectors", help="print (or write) the default selector map as YAML")
     p.add_argument("--out")
