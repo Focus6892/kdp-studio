@@ -16,6 +16,7 @@ dependencies = [
   "pyyaml>=6.0",
   "reportlab>=4.2",
   "pypdf>=4.3",
+  "ruamel.yaml>=0.18",
 ]
 
 [project.optional-dependencies]

@@ -1,8 +1,14 @@
-"""Command line interface: kdp validate | build | preflight | price | cover-size."""
+"""Command line interface.
+
+Book (Phase 0):   kdp validate | build | preflight | price | cover-size
+Niche (Phase 1):  kdp niche run | expand | trends | concepts
+Metadata (Ph. 1): kdp metadata generate | apply
+"""
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
@@ -26,6 +32,7 @@ def _print_findings(findings) -> None:
         print(f"  [{x.level.upper():7}] {x.code}: {x.message}")
 
 
+# --------------------------------------------------------------------------- book commands
 def cmd_validate(args) -> int:
     book = load_book(args.book)
     print(f"Book: {book.id} ({book.type}) — {book.metadata.full_title}")
@@ -58,7 +65,7 @@ def cmd_build(args) -> int:
     interior_pdf = build / "interior.pdf"
     if not args.skip_interior:
         if not isinstance(book.interior, ColoringInterior):
-            print("Only coloring interiors are implemented in Phase 0 (story interiors come in Phase 2).")
+            print("Only coloring interiors are implemented so far (story interiors come in Phase 2).")
             return 2
         result = build_coloring_interior(book, image_limit=args.images)
         pages = result.total_pages
@@ -122,8 +129,134 @@ def cmd_cover_size(args) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="kdp", description="kdp-studio: build KDP-ready coloring books from book.yaml")
+# --------------------------------------------------------------------------- niche commands
+def cmd_niche_run(args) -> int:
+    from .niche.pipeline import ScoutOptions, run_scout
+    from .niche.report import summary_table
+
+    opts = ScoutOptions(
+        topics=args.topic or [],
+        source=args.source,
+        book_type=args.book_type,
+        max_books=args.max_books,
+        expand=args.expand,
+        use_autocomplete=args.autocomplete,
+        use_claude=not args.no_claude,
+        concepts_for_top=args.concepts,
+        concepts_n=args.concepts_n,
+        out_dir=Path(args.out),
+        db_path=Path(args.db) if args.db else None,
+        csv_path=Path(args.csv) if args.csv else None,
+        default_keyword=args.keyword,
+        max_keywords=args.max_keywords,
+        seed=args.seed,
+    )
+    run, paths = run_scout(opts)
+    print(f"Scored {len(run.summaries)} keyword(s) from source '{run.source}' (run id {run.run_id}).\n")
+    print(summary_table(run.ranked()))
+    for kw, cards in run.concepts.items():
+        print(f"Concept cards for '{kw}':")
+        for i, c in enumerate(cards, start=1):
+            print(f"  {i}. {c.title_idea} — {c.angle} ({c.audience})")
+    print(f"\nReport: {paths['latest']}\nCSV: {paths['csv']}\nDB: {paths['db']}")
+    return 0
+
+
+def cmd_niche_expand(args) -> int:
+    from .niche.keywords import expand_keywords
+
+    kws = expand_keywords(args.topic, args.book_type, use_autocomplete=args.autocomplete, use_claude=not args.no_claude, max_total=args.max)
+    for k in kws:
+        print(k)
+    return 0
+
+
+def cmd_niche_trends(args) -> int:
+    from .niche.report import trends_markdown
+    from .niche.store import NicheStore
+
+    store = NicheStore(Path(args.db))
+    try:
+        md = trends_markdown(store.trends())
+    finally:
+        store.close()
+    print(md)
+    if args.out:
+        Path(args.out).write_text(md, encoding="utf-8")
+    return 0
+
+
+def cmd_niche_concepts(args) -> int:
+    from .niche.concepts import concept_cards
+    from .niche.scoring import summarize
+    from .niche.sources import make_source
+    from .niche.store import NicheStore
+
+    summary = None
+    db = Path(args.db)
+    if db.is_file():
+        store = NicheStore(db)
+        try:
+            summary = store.latest_summary(args.keyword)
+        finally:
+            store.close()
+    if summary is None:
+        source = make_source(args.source)
+        books = source.search(args.keyword, args.max_books)
+        if not books:
+            print(f"No data for '{args.keyword}' in {db} or from source {args.source}")
+            return 1
+        summary = summarize(args.keyword, books, source.name)
+    cards = concept_cards(summary, args.book_type, args.n, use_claude=not args.no_claude)
+    for i, c in enumerate(cards, start=1):
+        print(f"{i}. {c.title_idea}\n   angle: {c.angle}\n   audience: {c.audience}\n   differentiation: {c.differentiation}\n   why it can rank: {c.why_it_can_rank}\n   risks: {c.risks}\n   keywords: {', '.join(c.keywords)}\n")
+    if args.out:
+        Path(args.out).write_text(json.dumps([c.model_dump() for c in cards], indent=2, ensure_ascii=False), encoding="utf-8")
+    return 0
+
+
+# --------------------------------------------------------------------------- metadata commands
+def cmd_metadata_generate(args) -> int:
+    from .metadata.brief import load_brief
+    from .metadata.generate import generate_candidates
+    from .metadata.report import write_candidates
+
+    brief_path = Path(args.brief)
+    brief = load_brief(brief_path)
+    scored = generate_candidates(brief, n=args.n, use_claude=not args.no_claude, repair=not args.no_repair, model=args.model)
+    out_dir = Path(args.out) if args.out else brief_path.parent / "metadata"
+    paths = write_candidates(scored, brief, out_dir)
+    print(f"{len(scored)} candidate(s) for '{brief.niche_keyword}' -> {paths['markdown']}\n")
+    for i, sc in enumerate(scored, start=1):
+        c = sc.candidate
+        print(f"{i}. [{sc.score:.0f}] {c.title} — {c.subtitle or ''}  ({len(sc.findings.errors)} err, {len(sc.findings.warnings)} warn)")
+    best = scored[0] if scored else None
+    return 0 if best and not best.findings.errors else 1
+
+
+def cmd_metadata_apply(args) -> int:
+    from .metadata.apply import apply_candidate
+    from .metadata.generate import MetadataCandidate
+
+    data = json.loads(Path(args.candidates).read_text(encoding="utf-8"))
+    items = data["candidates"] if isinstance(data, dict) else data
+    if not 1 <= args.pick <= len(items):
+        print(f"--pick must be between 1 and {len(items)}")
+        return 2
+    cand = MetadataCandidate.model_validate(items[args.pick - 1]["candidate"] if "candidate" in items[args.pick - 1] else items[args.pick - 1])
+    backup = apply_candidate(Path(args.book), cand, author=args.author, backup=not args.no_backup)
+    book = load_book(args.book)
+    findings = validate_book_metadata(book)
+    print(f"Applied candidate {args.pick} to {args.book}" + (f" (backup: {backup})" if backup else ""))
+    print(f"Title: {book.metadata.full_title}")
+    print(f"Metadata check: {len(findings.errors)} error(s), {len(findings.warnings)} warning(s)")
+    _print_findings(findings)
+    return 0 if not findings.errors else 1
+
+
+# --------------------------------------------------------------------------- parser
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="kdp", description="kdp-studio: niche research, metadata and KDP-ready files from book.yaml")
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -157,6 +290,75 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--pages", type=int, required=True)
     p.set_defaults(func=cmd_cover_size)
 
+    niche = sub.add_parser("niche", help="niche research (niche-scout)")
+    nsub = niche.add_subparsers(dest="niche_cmd", required=True)
+
+    p = nsub.add_parser("run", help="score keywords from a data source and write a report")
+    p.add_argument("--topic", action="append", help="seed topic/keyword (repeatable)")
+    p.add_argument("--source", default="fixture", choices=["fixture", "csv", "apify", "creators"])
+    p.add_argument("--csv", help="CSV/JSON export for --source csv")
+    p.add_argument("--keyword", help="keyword to assign when the CSV has no keyword column")
+    p.add_argument("--book-type", default="coloring", choices=["coloring", "story"])
+    p.add_argument("--max-books", type=int, default=24)
+    p.add_argument("--expand", action="store_true", help="expand topics into more keywords before scoring")
+    p.add_argument("--autocomplete", action="store_true", help="use Amazon search suggestions during expansion")
+    p.add_argument("--no-claude", action="store_true", help="never call Claude (keyword expansion, concept cards)")
+    p.add_argument("--concepts", type=int, default=3, help="concept cards for the top N niches (0 = none)")
+    p.add_argument("--concepts-n", type=int, default=10)
+    p.add_argument("--max-keywords", type=int, default=40)
+    p.add_argument("--seed", type=int, default=1, help="fixture source seed")
+    p.add_argument("--out", default="niches")
+    p.add_argument("--db", help="SQLite path (default <out>/niche_scout.sqlite)")
+    p.set_defaults(func=cmd_niche_run)
+
+    p = nsub.add_parser("expand", help="print candidate keywords for seed topics")
+    p.add_argument("--topic", action="append", required=True)
+    p.add_argument("--book-type", default="coloring", choices=["coloring", "story"])
+    p.add_argument("--autocomplete", action="store_true")
+    p.add_argument("--no-claude", action="store_true")
+    p.add_argument("--max", type=int, default=60)
+    p.set_defaults(func=cmd_niche_expand)
+
+    p = nsub.add_parser("trends", help="compare the latest two runs per keyword")
+    p.add_argument("--db", default="niches/niche_scout.sqlite")
+    p.add_argument("--out", help="write the markdown table to this file")
+    p.set_defaults(func=cmd_niche_trends)
+
+    p = nsub.add_parser("concepts", help="concept cards for one keyword")
+    p.add_argument("--keyword", required=True)
+    p.add_argument("--db", default="niches/niche_scout.sqlite")
+    p.add_argument("--source", default="fixture", choices=["fixture", "apify", "creators"], help="used when the keyword is not in the DB")
+    p.add_argument("--max-books", type=int, default=24)
+    p.add_argument("--book-type", default="coloring", choices=["coloring", "story"])
+    p.add_argument("--n", type=int, default=10)
+    p.add_argument("--no-claude", action="store_true")
+    p.add_argument("--out", help="write cards as JSON")
+    p.set_defaults(func=cmd_niche_concepts)
+
+    meta = sub.add_parser("metadata", help="title / subtitle / description / keywords / categories (metadata-writer)")
+    msub = meta.add_subparsers(dest="metadata_cmd", required=True)
+
+    p = msub.add_parser("generate", help="generate and score candidates from a brief.yaml")
+    p.add_argument("--brief", required=True)
+    p.add_argument("--n", type=int, default=5)
+    p.add_argument("--no-claude", action="store_true")
+    p.add_argument("--no-repair", action="store_true", help="skip the Claude repair pass for candidates with findings")
+    p.add_argument("--model", default="claude-opus-5-5")
+    p.add_argument("--out", help="output directory (default <brief dir>/metadata)")
+    p.set_defaults(func=cmd_metadata_generate)
+
+    p = msub.add_parser("apply", help="write a chosen candidate into book.yaml")
+    p.add_argument("--book", required=True)
+    p.add_argument("--candidates", required=True, help="candidates.json from `metadata generate`")
+    p.add_argument("--pick", type=int, default=1, help="1-based candidate number")
+    p.add_argument("--author", help="override the author/pen name")
+    p.add_argument("--no-backup", action="store_true")
+    p.set_defaults(func=cmd_metadata_apply)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
     args = parser.parse_args(argv)
     for stream in (sys.stdout, sys.stderr):  # Windows consoles default to cp1252
         if hasattr(stream, "reconfigure"):

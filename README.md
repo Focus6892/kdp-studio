@@ -2,7 +2,9 @@
 
 Bộ công cụ sản xuất sách cho Amazon KDP, bắt đầu từ sách tô màu: một file `book.yaml` làm nguồn sự thật duy nhất → ruột sách PDF, bìa wrap PDF (CMYK, 300 DPI), bìa eBook JPEG và báo cáo preflight kiểm tra theo đúng thông số KDP.
 
-Trạng thái: **Giai đoạn 0** (interior-forge cho sách tô màu + cover-forge + preflight). Nghiên cứu thị trường, chính sách và kiến trúc đầy đủ của toàn bộ bộ công cụ nằm trong [docs/KDP-Toolkit-Research.md](docs/KDP-Toolkit-Research.md).
+Trạng thái: **Giai đoạn 0** (interior-forge cho sách tô màu + cover-forge + preflight) và **Giai đoạn 1** (niche-scout nghiên cứu ngách + metadata-writer) đã chạy được. Nghiên cứu thị trường, chính sách và kiến trúc đầy đủ của toàn bộ bộ công cụ nằm trong [docs/KDP-Toolkit-Research.md](docs/KDP-Toolkit-Research.md).
+
+Luồng làm việc trọn vẹn cho một cuốn: `kdp niche run` (chọn ngách, nhận concept cards) → viết `brief.yaml` → `kdp metadata generate` + `kdp metadata apply` (ghi title/mô tả/keywords/categories vào `book.yaml`) → `kdp build` (ruột, bìa, preflight) → upload thủ công lên KDP.
 
 ## Cài đặt
 
@@ -52,6 +54,47 @@ Kết quả nằm trong `build/` cạnh `book.yaml`:
 | `interior_manifest.json` | Prompt, trang được nhận / bị loại và lý do, hash, bản đồ trang |
 | `prompts.json`, `raw/`, `art/`, `pages/` | Trung gian: prompt, ảnh gốc, line art đã làm sạch, trang hoàn chỉnh |
 
+## Nghiên cứu ngách — `kdp niche`
+
+```bash
+# Chấm điểm vài chủ đề bằng dữ liệu mẫu (offline), kèm concept cards cho 3 ngách tốt nhất
+python -m kdp_studio niche run --topic "bold and easy flowers coloring book" --topic "cats coloring book for kids" --source fixture
+
+# Mở rộng chủ đề thành 40 keyword (template + gợi ý tìm kiếm Amazon + Claude) rồi chấm điểm bằng Apify
+python -m kdp_studio niche run --topic "bold and easy flowers" --expand --autocomplete --source apify --max-books 20
+
+# Dùng file export của KDSpy / BookBeam / Publisher Rocket / Helium 10 (CSV hoặc JSON)
+python -m kdp_studio niche run --source csv --csv exports/kdspy-flowers.csv --keyword "flowers coloring book"
+
+# So sánh với lần chạy trước (xu hướng theo tuần) và xin thêm ý tưởng cho một keyword
+python -m kdp_studio niche trends
+python -m kdp_studio niche concepts --keyword "bold and easy flowers coloring book" --n 10
+python -m kdp_studio niche expand --topic "flowers" --autocomplete
+```
+
+Kết quả trong `niches/`: `niche_report_latest.md` (bảng xếp hạng + chi tiết từng ngách + concept cards), `niches_<ts>.csv`, `run_<ts>.json`, và `niche_scout.sqlite` lưu mọi lần chạy để tính xu hướng.
+
+| Nguồn `--source` | Dữ liệu | Cần gì | Ghi chú |
+|---|---|---|---|
+| `fixture` | Dữ liệu tổng hợp xác định | Không | Để chạy thử pipeline, test và demo |
+| `csv` | Export từ extension/tool khác | File CSV/JSON | Tự nhận diện tên cột (ASIN, BSR, Ratings, Publication Date…) |
+| `apify` | Actor `getascraper/kdp-book-niche-analyzer` (Kindle Store) | `APIFY_TOKEN`, ~$1/1.000 bản ghi | BSR là rank Kindle Store; có rating count |
+| `creators` | Amazon Creators API (chính thức, Books) | Tài khoản Associates ≥ 10 sale/30 ngày, `CREATORS_CLIENT_ID/SECRET/PARTNER_TAG` | Không có rating count; 1 request/giây |
+
+Chấm điểm (0–100, chỉ để **so sánh** các ngách với nhau): demand 0–40 từ median BSR của top 10 (thang log), competition ease 0–40 từ median số rating, tỉ lệ sách > 1000 rating, tỉ lệ nhà xuất bản độc lập và tỉ lệ sách ra trong 12 tháng, monetization 0–20 từ giá (ngưỡng $9.99). Kèm cờ cảnh báo: thương hiệu/IP trong tiêu đề, top 3 chiếm > 50% doanh số ước tính, không có người mới, giá ở bậc 50%. Ước tính BSR→doanh số chỉ là tương đối (các tool công khai lệch nhau tới 7 lần).
+
+## Viết metadata — `kdp metadata`
+
+```bash
+# Sinh 5 bộ title/subtitle/mô tả HTML/7 keywords/3 categories từ brief, kiểm tra luật KDP, chấm rubric
+python -m kdp_studio metadata generate --brief examples/bold-easy-flowers/brief.yaml
+
+# Ghi bộ số 2 vào book.yaml (giữ nguyên chú thích nhờ ruamel.yaml; có file .bak)
+python -m kdp_studio metadata apply --book examples/bold-easy-flowers/book.yaml --candidates examples/bold-easy-flowers/metadata/candidates.json --pick 2
+```
+
+`brief.yaml` ([ví dụ](examples/bold-easy-flowers/brief.yaml)) gồm: `niche_keyword`, `concept_title`, `angle`, `audience`, `differentiators`, `competitor_insights`, `must_include_terms`, `avoid_terms`, `series_name`, `reading_age`, `author`, `page_count`, `image_count`. Có Claude thì các ứng viên được sinh bằng structured output và tự sửa một lần nếu vi phạm luật; không có Claude thì dùng mẫu offline (vẫn qua được validator). Rubric: tuân thủ 40 điểm, keywords 15, title/subtitle 15, mô tả 15, categories 10, khớp brief 5. Kết quả: `metadata/candidates.md` để duyệt và `candidates.json` để apply.
+
 ## book.yaml
 
 Xem [examples/bold-easy-flowers/book.yaml](examples/bold-easy-flowers/book.yaml) có chú thích đầy đủ. Các khối chính:
@@ -87,6 +130,7 @@ KDP gỡ sách có nội dung "excessively reused, recycled, or repeated within 
 ## Dùng AI thật
 
 - **Prompt đa dạng theo chủ đề**: `interior.prompts_with_claude: true` + `ANTHROPIC_API_KEY` (hoặc `ant auth login`). Model mặc định `claude-opus-5-5`, structured output qua `client.messages.parse`.
+- **Niche & metadata**: `kdp niche run` và `kdp metadata generate` tự dùng Claude khi có credential (mở rộng keyword, concept cards, sinh và sửa metadata); thêm `--no-claude` để chạy hoàn toàn offline.
 - **QA thị giác từng trang**: `interior.qa.claude: true`. Mỗi trang được chấm: line art sạch, có chữ rác, mảng đen lớn, lỗi hình, rủi ro IP, phù hợp tuổi.
 - **Sinh ảnh**: `source.provider: openai` / `cover.art.provider: openai` + `OPENAI_API_KEY` (gọi Images API, chưa kiểm thử trong repo này; sửa `model`/`size` theo tài liệu hiện hành). Hoặc sinh ảnh bằng ComfyUI/Midjourney rồi dùng `provider: folder`.
 - Mọi ảnh do model sinh ra là **AI-generated** theo định nghĩa KDP, kể cả khi đã chỉnh sửa nhiều → đặt `provenance` đúng.
@@ -99,13 +143,15 @@ KDP gỡ sách có nội dung "excessively reused, recycled, or repeated within 
 - Upscale bằng LANCZOS + re-threshold; chưa tích hợp Real-ESRGAN.
 - Ước lượng DPI trong preflight giả định ảnh trải hết chiều rộng trang.
 - Chưa có module upload; theo nghiên cứu, chỉ nên làm bán tự động có người bấm Publish.
+- Nguồn `apify` và `creators` được viết theo tài liệu công khai nhưng chưa chạy với credential thật trong repo này; nguồn `csv` và `fixture` đã test. Chưa có Keepa và Google Trends.
+- Danh sách categories là gợi ý thường gặp; luôn xác nhận lại trong màn hình chọn category của KDP.
 
 ## Lộ trình
 
-1. **Giai đoạn 0 (này)**: schema, interior-forge tô màu, cover-forge, preflight. Upload thủ công 2 cuốn để Amazon xác nhận file chuẩn.
-2. **Giai đoạn 1**: `niche-scout` (Creators API / Apify / Keepa) + `metadata-writer` + dashboard.
-3. **Giai đoạn 2**: pipeline truyện chữ (Pandoc EPUB, Typst PDF, Kindle Previewer CLI) + `competitor-watch`.
-4. **Giai đoạn 3**: `assisted-publisher` (Playwright, human-in-the-loop, hàng đợi theo quota tuần) + theo dõi sau xuất bản.
+1. **Giai đoạn 0 (xong)**: schema, interior-forge tô màu, cover-forge, preflight. Upload thủ công 2 cuốn để Amazon xác nhận file chuẩn.
+2. **Giai đoạn 1 (xong)**: `niche-scout` (fixture / CSV / Apify / Creators API, chấm điểm, xu hướng, concept cards) + `metadata-writer` (brief → ứng viên → validator → rubric → apply).
+3. **Giai đoạn 2**: pipeline truyện chữ (Pandoc EPUB, Typst PDF, Kindle Previewer CLI) + `competitor-watch` (theo dõi ASIN theo ngày, khai thác review).
+4. **Giai đoạn 3**: `assisted-publisher` (Playwright, human-in-the-loop, hàng đợi theo quota tuần) + theo dõi sau xuất bản + dashboard.
 
 ## Cấu trúc
 
@@ -116,11 +162,15 @@ kdp_studio/
   pricing.py         chi phí in, royalty, giá sàn
   metadata_rules.py  luật metadata KDP
   fonts.py           tìm TTF, fallback Vera (reportlab) cho mọi hệ điều hành
+  llm.py             wrapper Anthropic SDK (structured output, fallback khi lỗi)
   interior/          pagegeom, prompts, generate (providers), cleanup, dedupe, qa, layout, pipeline
   cover/             geometry, text, render
   preflight/         pdf_checks (pypdf), run (báo cáo)
-  cli.py             validate | build | preflight | price | cover-size
-examples/            book.yaml mẫu
+  niche/             models, keywords, autocomplete, scoring, phrases, concepts, store (SQLite), report, pipeline
+  niche/sources/     fixture, csv_source, apify, creators
+  metadata/          brief, categories, generate (Claude/template + repair), score (rubric), apply (ruamel), report
+  cli.py             validate | build | preflight | price | cover-size | niche … | metadata …
+examples/            book.yaml + brief.yaml mẫu
 library/             thư viện hash chống trùng xuyên sách
 docs/                báo cáo nghiên cứu KDP & kiến trúc bộ công cụ
 tests/               unit + end-to-end (build thật 10 trang rồi preflight)

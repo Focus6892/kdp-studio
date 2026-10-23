@@ -1,0 +1,24 @@
+# Brief for metadata-writer. Run:
+#   python -m kdp_studio metadata generate --brief examples/bold-easy-flowers/brief.yaml --out examples/bold-easy-flowers/metadata
+#   python -m kdp_studio metadata apply --book examples/bold-easy-flowers/book.yaml --candidates examples/bold-easy-flowers/metadata/candidates.json --pick 1
+book_type: coloring
+niche_keyword: "bold and easy flowers coloring book"
+concept_title: "Bold & Easy Flowers"
+angle: "thick outlines and large shapes for relaxed coloring without eye strain"
+audience: "adults and seniors, beginners, people with low vision"
+differentiators:
+  - "30 single-sided designs so markers never bleed through"
+  - "large 8.5 x 11 pages with wide margins"
+  - "bold outlines designed for low vision and tired eyes"
+  - "color test page included"
+competitor_insights:
+  - "reviews of competing titles complain about thin paper and designs that are too detailed"
+  - "several top titles print on both sides of the page"
+must_include_terms: ["large print", "seniors"]
+avoid_terms: ["mandala", "intricate"]
+formats: [paperback]
+language: English
+author: "Mia Hartwell"
+page_count: 66
+image_count: 30
+tone: "warm, concrete, benefit-led, no hype"

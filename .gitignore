@@ -10,3 +10,6 @@ build/
 dist/
 .DS_Store
 Thumbs.db
+niches/
+examples/**/metadata/
+*.bak
