@@ -1,0 +1,15 @@
+# Example watchlist for competitor-watch. ASINs here are placeholders; replace with real ones.
+#   python -m kdp_studio watch snapshot --watchlist examples/watchlist.yaml --source fixture --db watch/demo.sqlite
+#   python -m kdp_studio watch report   --watchlist examples/watchlist.yaml --db watch/demo.sqlite --out watch
+marketplace: amazon.com
+items:
+  - asin: B0EXAMPLE1
+    label: "Competitor A — bold flowers"
+    niche: "bold and easy flowers coloring book"
+  - asin: B0EXAMPLE2
+    label: "Competitor B — large print florals"
+    niche: "large print flower coloring book for seniors"
+  - asin: B0OURBOOK1
+    label: "Bold & Easy Flowers (ours)"
+    niche: "bold and easy flowers coloring book"
+    ours: true

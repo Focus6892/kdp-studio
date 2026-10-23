@@ -1,8 +1,10 @@
 """Command line interface.
 
-Book (Phase 0):   kdp validate | build | preflight | price | cover-size
-Niche (Phase 1):  kdp niche run | expand | trends | concepts
-Metadata (Ph. 1): kdp metadata generate | apply
+Book:      kdp validate | build | preflight | price | cover-size
+Niche:     kdp niche run | expand | trends | concepts
+Metadata:  kdp metadata generate | apply
+Story:     kdp story draft | check
+Watch:     kdp watch add | snapshot | report | insights | covers
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from .interior.pipeline import build_coloring_interior
 from .metadata_rules import validate_book_metadata
 from .preflight.run import run_preflight
 from .pricing import price_report
-from .schema import ColoringInterior, load_book
+from .schema import ColoringInterior, StoryInterior, load_book
 
 log = logging.getLogger("kdp")
 
@@ -43,6 +45,14 @@ def cmd_validate(args) -> int:
         print(f"Cover wrap: {geo.width_in:.4f} x {geo.height_in:.4f} in ({geo.width_px}x{geo.height_px}px), spine {geo.spine_in:.4f} in, spine text {'allowed' if geo.spine_text_allowed else 'NOT allowed (<79 pages)'}")
         rep = price_report(book.print_.trim, book.print_.paper, pages, book.pricing.list_price)
         print(f"Printing cost ${rep.printing_cost:.2f} | list ${rep.list_price:.2f} @ {int(rep.royalty_rate * 100)}% -> royalty ${rep.royalty_per_copy:.2f}/copy | min price ${rep.min_list_price:.2f} | at ${rep.threshold_price:.2f}: ${rep.royalty_at_threshold:.2f}")
+    elif isinstance(book.interior, StoryInterior):
+        from .story.manuscript import load_manuscript
+
+        try:
+            ms = load_manuscript(book)
+            print(f"Manuscript: {len(ms.chapters)} chapters, {ms.words:,} words | trim {book.print_.trim} | paper {book.print_.paper}")
+        except FileNotFoundError as exc:
+            print(f"Manuscript: {exc}")
     print("AI disclosure:")
     for k, v in book.ai_disclosure().items():
         print(f"  - {k}: {v}")
@@ -61,17 +71,25 @@ def cmd_build(args) -> int:
     build = book.build_dir
     build.mkdir(parents=True, exist_ok=True)
     pages = args.pages
-
     interior_pdf = build / "interior.pdf"
+    story_res = None
+    run_previewer = not getattr(args, "no_previewer", False)
+
     if not args.skip_interior:
-        if not isinstance(book.interior, ColoringInterior):
-            print("Only coloring interiors are implemented so far (story interiors come in Phase 2).")
-            return 2
-        result = build_coloring_interior(book, image_limit=args.images)
-        pages = result.total_pages
-        print(f"Interior: {result.pdf_path} — {result.total_pages} pages, {result.image_pages} coloring pages")
-        if result.rejected_images:
-            print(f"  WARNING: {result.rejected_images} of {result.requested_images} requested pages rejected (QA/dedupe); see {build / 'interior_manifest.json'}")
+        if isinstance(book.interior, ColoringInterior):
+            result = build_coloring_interior(book, image_limit=args.images)
+            pages = result.total_pages
+            print(f"Interior: {result.pdf_path} — {result.total_pages} pages, {result.image_pages} coloring pages")
+            if result.rejected_images:
+                print(f"  WARNING: {result.rejected_images} of {result.requested_images} requested pages rejected (QA/dedupe); see {build / 'interior_manifest.json'}")
+        else:
+            from .story.pipeline import build_story
+
+            story_res = build_story(book, run_previewer=run_previewer)
+            pages = story_res.pages
+            pr = story_res.print_result
+            print(f"Interior: {story_res.pdf_path} — {pages} pages ({pr.content_pages} content + {pr.padded_pages} blank), {story_res.words:,} words, {len(story_res.manuscript.chapters)} chapters, inside margin {pr.inside_margin_in:.3f} in")
+            print(f"EPUB: {story_res.epub_path}")
     elif interior_pdf.is_file() and pages is None:
         pages = _pdf_pages(interior_pdf)
     if pages is None:
@@ -85,13 +103,21 @@ def cmd_build(args) -> int:
         cover_pdf, ebook_jpg = cov.pdf_path, cov.ebook_jpg
         print(f"Cover: {cov.pdf_path} — {cov.geometry.width_in:.4f} x {cov.geometry.height_in:.4f} in, spine {cov.geometry.spine_in:.4f} in, spine text {'drawn' if cov.spine_text_drawn else 'omitted'}")
         print(f"Preview: {cov.preview_jpg} | eBook cover: {cov.ebook_jpg}")
+        if story_res is not None:
+            from .story.pipeline import rebuild_epub
 
+            story_res = rebuild_epub(book, story_res, cov.ebook_jpg, run_previewer=run_previewer)
+            print(f"EPUB repackaged with the cover: {story_res.epub_path}")
+
+    epub_path = story_res.epub_path if story_res else (next(iter(sorted(build.glob("*.epub"))), None) if book.type == "story" else None)
     report = run_preflight(
         book,
         pages,
         interior_pdf if interior_pdf.is_file() else None,
         cover_pdf if cover_pdf.is_file() else None,
         ebook_jpg if ebook_jpg.is_file() else None,
+        epub_path=epub_path,
+        extra=story_res.findings if story_res else None,
     )
     print(f"Preflight: {'PASS' if report.ok else 'FAIL'} — {len(report.findings.errors)} error(s), {len(report.findings.warnings)} warning(s) -> {build / 'preflight.md'}")
     _print_findings(report.findings)
@@ -103,12 +129,14 @@ def cmd_preflight(args) -> int:
     build = book.build_dir
     interior_pdf = build / "interior.pdf"
     pages = args.pages or (_pdf_pages(interior_pdf) if interior_pdf.is_file() else None)
+    epub_path = next(iter(sorted(build.glob("*.epub"))), None) if book.type == "story" else None
     report = run_preflight(
         book,
         pages,
         interior_pdf if interior_pdf.is_file() else None,
         build / "cover_wrap.pdf" if (build / "cover_wrap.pdf").is_file() else None,
         build / "cover_ebook.jpg" if (build / "cover_ebook.jpg").is_file() else None,
+        epub_path=epub_path,
     )
     print(f"Preflight: {'PASS' if report.ok else 'FAIL'} — {len(report.findings.errors)} error(s), {len(report.findings.warnings)} warning(s)")
     _print_findings(report.findings)
@@ -165,8 +193,7 @@ def cmd_niche_run(args) -> int:
 def cmd_niche_expand(args) -> int:
     from .niche.keywords import expand_keywords
 
-    kws = expand_keywords(args.topic, args.book_type, use_autocomplete=args.autocomplete, use_claude=not args.no_claude, max_total=args.max)
-    for k in kws:
+    for k in expand_keywords(args.topic, args.book_type, use_autocomplete=args.autocomplete, use_claude=not args.no_claude, max_total=args.max):
         print(k)
     return 0
 
@@ -243,7 +270,8 @@ def cmd_metadata_apply(args) -> int:
     if not 1 <= args.pick <= len(items):
         print(f"--pick must be between 1 and {len(items)}")
         return 2
-    cand = MetadataCandidate.model_validate(items[args.pick - 1]["candidate"] if "candidate" in items[args.pick - 1] else items[args.pick - 1])
+    raw = items[args.pick - 1]
+    cand = MetadataCandidate.model_validate(raw["candidate"] if "candidate" in raw else raw)
     backup = apply_candidate(Path(args.book), cand, author=args.author, backup=not args.no_backup)
     book = load_book(args.book)
     findings = validate_book_metadata(book)
@@ -254,9 +282,108 @@ def cmd_metadata_apply(args) -> int:
     return 0 if not findings.errors else 1
 
 
+# --------------------------------------------------------------------------- story commands
+def cmd_story_draft(args) -> int:
+    from .story.draft import draft_story, load_story_brief
+
+    brief_path = Path(args.brief)
+    brief = load_story_brief(brief_path)
+    out_dir = Path(args.out) if args.out else brief_path.parent / "manuscript"
+    res = draft_story(brief, out_dir, model=args.model, polish=args.polish, progress=print)
+    print(f"\nDrafted {len(res.chapter_files)} chapter(s), {res.words:,} words -> {res.out_dir}")
+    print(f"Bible: {res.bible_path} | Outline: {res.outline_path}")
+    print("Remember: this text is AI-generated for KDP purposes (provenance.text: ai_generated).")
+    return 0
+
+
+def cmd_story_check(args) -> int:
+    from .story.epub import validate_epub
+    from .story.kindle_previewer import run_kindle_previewer
+
+    book = load_book(args.book)
+    build = book.build_dir
+    epub_path = Path(args.epub) if args.epub else next(iter(sorted(build.glob("*.epub"))), None)
+    if epub_path is None or not epub_path.is_file():
+        print(f"No EPUB found in {build}; run `kdp build` first or pass --epub")
+        return 2
+    findings = validate_epub(epub_path)
+    if not args.no_previewer:
+        findings.extend(run_kindle_previewer(epub_path, build / "kindle_previewer"))
+    print(f"EPUB check: {'PASS' if findings.ok else 'FAIL'} — {len(findings.errors)} error(s), {len(findings.warnings)} warning(s) for {epub_path.name}")
+    _print_findings(findings)
+    return 0 if findings.ok else 1
+
+
+# --------------------------------------------------------------------------- watch commands
+def cmd_watch_add(args) -> int:
+    from .watch.models import WatchItem, load_watchlist, save_watchlist
+
+    path = Path(args.watchlist)
+    wl = load_watchlist(path)
+    added = wl.add(WatchItem(asin=args.asin.strip().upper(), label=args.label, niche=args.niche, ours=args.ours, notes=args.notes))
+    save_watchlist(path, wl)
+    print(("Added" if added else "Already present:") + f" {args.asin} -> {path} ({len(wl.items)} item(s))")
+    return 0
+
+
+def cmd_watch_snapshot(args) -> int:
+    from .watch.pipeline import take_snapshot
+
+    snaps = take_snapshot(Path(args.watchlist), args.source, Path(args.db), csv_path=Path(args.csv) if args.csv else None, day=args.day, seed=args.seed)
+    print(f"Stored {len(snaps)} snapshot(s) from '{args.source}' in {args.db}")
+    for s in snaps:
+        print(f"  {s.asin} {s.label or ''}: BSR {s.bsr if s.bsr is not None else '–'}, price {s.price if s.price is not None else '–'}, ratings {s.rating_count if s.rating_count is not None else '–'}")
+    return 0
+
+
+def cmd_watch_report(args) -> int:
+    from .watch.pipeline import make_report
+    from .watch.report import report_markdown
+
+    rep, paths = make_report(Path(args.watchlist), Path(args.db), Path(args.out))
+    print(report_markdown(rep))
+    print(f"Report: {paths['latest']} | CSV: {paths['csv']}")
+    return 0
+
+
+def cmd_watch_insights(args) -> int:
+    from .watch.insights import insights_markdown, load_reviews, mine_reviews
+
+    reviews = load_reviews(Path(args.reviews))
+    if not reviews:
+        print("No reviews found in the file")
+        return 2
+    ins = mine_reviews(reviews, use_claude=not args.no_claude, product_context=args.context or "")
+    md = insights_markdown(ins)
+    print(md)
+    if args.out:
+        Path(args.out).write_text(md, encoding="utf-8")
+    return 0
+
+
+def cmd_watch_covers(args) -> int:
+    from .watch.covers import analyze_covers, covers_markdown
+
+    paths: list[Path] = []
+    for p in args.images:
+        pp = Path(p)
+        if pp.is_dir():
+            paths += sorted(x for x in pp.iterdir() if x.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"))
+        elif pp.is_file():
+            paths.append(pp)
+    if not paths:
+        print("No images found")
+        return 2
+    results = analyze_covers(paths, use_claude=not args.no_claude)
+    print(covers_markdown(results))
+    if args.out:
+        Path(args.out).write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
+    return 0
+
+
 # --------------------------------------------------------------------------- parser
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="kdp", description="kdp-studio: niche research, metadata and KDP-ready files from book.yaml")
+    parser = argparse.ArgumentParser(prog="kdp", description="kdp-studio: niche research, metadata, manuscripts and KDP-ready files from book.yaml")
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -264,12 +391,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("book")
     p.set_defaults(func=cmd_validate)
 
-    p = sub.add_parser("build", help="build interior + cover and run preflight")
+    p = sub.add_parser("build", help="build interior (+ EPUB for story books) + cover and run preflight")
     p.add_argument("book")
     p.add_argument("--images", type=int, help="limit the number of coloring pages (quick test builds)")
     p.add_argument("--skip-interior", action="store_true")
     p.add_argument("--skip-cover", action="store_true")
     p.add_argument("--pages", type=int, help="page count when skipping the interior")
+    p.add_argument("--no-previewer", action="store_true", help="story books: skip the Kindle Previewer conversion check")
     p.set_defaults(func=cmd_build)
 
     p = sub.add_parser("preflight", help="re-run checks on an existing build/")
@@ -292,7 +420,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     niche = sub.add_parser("niche", help="niche research (niche-scout)")
     nsub = niche.add_subparsers(dest="niche_cmd", required=True)
-
     p = nsub.add_parser("run", help="score keywords from a data source and write a report")
     p.add_argument("--topic", action="append", help="seed topic/keyword (repeatable)")
     p.add_argument("--source", default="fixture", choices=["fixture", "csv", "apify", "creators"])
@@ -310,7 +437,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", default="niches")
     p.add_argument("--db", help="SQLite path (default <out>/niche_scout.sqlite)")
     p.set_defaults(func=cmd_niche_run)
-
     p = nsub.add_parser("expand", help="print candidate keywords for seed topics")
     p.add_argument("--topic", action="append", required=True)
     p.add_argument("--book-type", default="coloring", choices=["coloring", "story"])
@@ -318,12 +444,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-claude", action="store_true")
     p.add_argument("--max", type=int, default=60)
     p.set_defaults(func=cmd_niche_expand)
-
     p = nsub.add_parser("trends", help="compare the latest two runs per keyword")
     p.add_argument("--db", default="niches/niche_scout.sqlite")
     p.add_argument("--out", help="write the markdown table to this file")
     p.set_defaults(func=cmd_niche_trends)
-
     p = nsub.add_parser("concepts", help="concept cards for one keyword")
     p.add_argument("--keyword", required=True)
     p.add_argument("--db", default="niches/niche_scout.sqlite")
@@ -337,7 +461,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     meta = sub.add_parser("metadata", help="title / subtitle / description / keywords / categories (metadata-writer)")
     msub = meta.add_subparsers(dest="metadata_cmd", required=True)
-
     p = msub.add_parser("generate", help="generate and score candidates from a brief.yaml")
     p.add_argument("--brief", required=True)
     p.add_argument("--n", type=int, default=5)
@@ -346,7 +469,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--model", default="claude-opus-5-5")
     p.add_argument("--out", help="output directory (default <brief dir>/metadata)")
     p.set_defaults(func=cmd_metadata_generate)
-
     p = msub.add_parser("apply", help="write a chosen candidate into book.yaml")
     p.add_argument("--book", required=True)
     p.add_argument("--candidates", required=True, help="candidates.json from `metadata generate`")
@@ -354,6 +476,55 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--author", help="override the author/pen name")
     p.add_argument("--no-backup", action="store_true")
     p.set_defaults(func=cmd_metadata_apply)
+
+    story = sub.add_parser("story", help="text books: draft with Claude, check the EPUB")
+    ssub = story.add_subparsers(dest="story_cmd", required=True)
+    p = ssub.add_parser("draft", help="draft a manuscript from story_brief.yaml with Claude (bible -> outline -> chapters)")
+    p.add_argument("--brief", required=True)
+    p.add_argument("--out", help="manuscript directory (default <brief dir>/manuscript)")
+    p.add_argument("--model", default="claude-opus-5-5")
+    p.add_argument("--polish", action="store_true", help="second editing pass per chapter")
+    p.set_defaults(func=cmd_story_draft)
+    p = ssub.add_parser("check", help="validate the built EPUB and run Kindle Previewer if installed")
+    p.add_argument("book")
+    p.add_argument("--epub", help="EPUB path (default: the one in build/)")
+    p.add_argument("--no-previewer", action="store_true")
+    p.set_defaults(func=cmd_story_check)
+
+    watch = sub.add_parser("watch", help="competitor-watch: track ASINs, mine reviews, compare covers")
+    wsub = watch.add_subparsers(dest="watch_cmd", required=True)
+    p = wsub.add_parser("add", help="add an ASIN to the watchlist")
+    p.add_argument("--watchlist", default="watch/watchlist.yaml")
+    p.add_argument("--asin", required=True)
+    p.add_argument("--label")
+    p.add_argument("--niche")
+    p.add_argument("--ours", action="store_true", help="mark as one of your own titles")
+    p.add_argument("--notes")
+    p.set_defaults(func=cmd_watch_add)
+    p = wsub.add_parser("snapshot", help="record current BSR/price/ratings for every watched ASIN")
+    p.add_argument("--watchlist", default="watch/watchlist.yaml")
+    p.add_argument("--source", default="fixture", choices=["fixture", "csv", "creators", "apify"])
+    p.add_argument("--csv", help="CSV/JSON export for --source csv")
+    p.add_argument("--db", default="watch/watch.sqlite")
+    p.add_argument("--day", type=int, default=0, help="fixture source: simulated day offset")
+    p.add_argument("--seed", type=int, default=1)
+    p.set_defaults(func=cmd_watch_snapshot)
+    p = wsub.add_parser("report", help="latest vs 7/30 days ago with alerts")
+    p.add_argument("--watchlist", default="watch/watchlist.yaml")
+    p.add_argument("--db", default="watch/watch.sqlite")
+    p.add_argument("--out", default="watch")
+    p.set_defaults(func=cmd_watch_report)
+    p = wsub.add_parser("insights", help="mine a reviews export into a differentiation brief")
+    p.add_argument("--reviews", required=True, help="text (blank-line separated), JSON or JSONL file")
+    p.add_argument("--context", help="what the reviewed books are, for Claude")
+    p.add_argument("--no-claude", action="store_true")
+    p.add_argument("--out", help="write markdown to this file")
+    p.set_defaults(func=cmd_watch_insights)
+    p = wsub.add_parser("covers", help="palette and (with Claude) style review of competitor cover images")
+    p.add_argument("images", nargs="+", help="image files or a directory")
+    p.add_argument("--no-claude", action="store_true")
+    p.add_argument("--out", help="write JSON results to this file")
+    p.set_defaults(func=cmd_watch_covers)
     return parser
 
 

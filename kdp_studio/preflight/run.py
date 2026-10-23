@@ -81,6 +81,8 @@ def check_print_spec(book: Book, pages: int | None) -> FindingList:
         f.error("isbn.missing", "print.isbn is 'own' but no isbn_number given.", "print.isbn")
     if book.type == "coloring" and book.print_.paper in ("standard_color", "premium_color"):
         f.info("print.color_paper", "Color paper on a coloring book multiplies printing cost; black ink on white paper is the usual choice.", "print.paper")
+    if book.type == "story" and book.print_.bleed:
+        f.warning("print.story_bleed", "Text-only interiors do not need bleed; the story builder ignores print.bleed=true.", "print.bleed")
     return f
 
 
@@ -113,9 +115,22 @@ def run_preflight(
     cover_pdf: Path | None = None,
     ebook_cover: Path | None = None,
     out_dir: Path | None = None,
+    epub_path: Path | None = None,
+    extra: FindingList | None = None,
 ) -> PreflightReport:
     findings = FindingList()
     summary: dict = {}
+    if extra is not None:
+        findings.extend(extra)
+    if epub_path is not None:
+        if extra is None or not any(x.code.startswith("epub.") for x in extra):
+            from ..story.epub import validate_epub
+
+            findings.extend(validate_epub(epub_path))
+        if epub_path.is_file():
+            from ..util import file_mb
+
+            summary["epub"] = {"file": epub_path.name, "size_mb": round(file_mb(epub_path), 2)}
 
     findings.extend(validate_book_metadata(book))
     findings.extend(check_print_spec(book, pages))

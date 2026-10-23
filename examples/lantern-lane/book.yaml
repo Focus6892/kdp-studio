@@ -1,0 +1,87 @@
+# Story book example. Run:  python -m kdp_studio build examples/lantern-lane/book.yaml
+# The manuscript in manuscript/chapters was written by hand for this example (provenance.text: human).
+id: st-lantern-lane-001
+type: story
+niche: "cozy small-town short reads"
+formats: [paperback, ebook]
+
+metadata:
+  title: "The Lantern Lane Letters"
+  subtitle: "Six Cozy Stories from a River Town That Still Writes by Hand"
+  author: "June Alder"
+  language: English
+  description_html: |
+    <h4>Six short stories, one small town, and a blue mailbox that keeps its promises</h4>
+    <p>On Lantern Lane in Alder Bend, letters still travel by hand. A retired teacher answers mail addressed to nobody, a baker learns to read a map drawn in icing, and a storm teaches the whole street what neighbors are for.</p>
+    <ul>
+      <li>Six complete stories, each short enough for one cup of tea</li>
+      <li>Gentle humor, no cliffhangers, no heartbreak without a hand to hold</li>
+      <li>Perfect for readers who love small towns, second chances and quiet courage</li>
+    </ul>
+    <p>Pull up a chair by the window. The mail is about to arrive.</p>
+  keywords:
+    - "cozy short stories"
+    - "small town fiction women"
+    - "feel good short reads"
+    - "heartwarming stories about neighbors"
+    - "gentle fiction for relaxing"
+    - "autumn cozy reads"
+    - "clean fiction short stories"
+  categories:
+    - "Literature & Fiction > Genre Fiction > Short Stories"
+    - "Literature & Fiction > Women's Fiction > Friendship"
+    - "Literature & Fiction > Small Town & Rural"
+
+print:
+  trim: 5x8
+  paper: cream_bw
+  bleed: false
+  cover_finish: matte
+  isbn: kdp_free
+
+interior:
+  type: story
+  manuscript_dir: manuscript
+  chapters_glob: "chapters/*.md"
+  body_font: georgia            # any TTF stem; falls back to a serif on the system, then Vera
+  font_size_pt: 11
+  leading: 1.45
+  paragraph_indent_in: 0.3
+  margins: {inside: 0.75, outside: 0.6, top: 0.75, bottom: 0.75}
+  chapter_start_recto: true
+  running_heads: true
+  page_numbers: true
+  numbered_chapters: true
+  chapter_label: "Letter"
+  front_matter: [title, copyright, dedication]
+  back_matter: [about_author, review_cta]
+  review_cta: "If these stories kept you company, a short honest review helps other readers find Lantern Lane. Thank you for visiting Alder Bend."
+  smart_quotes: true
+  pad_to_min_pages: true
+  min_words: 1500
+  kindle_previewer: true
+
+cover:
+  art: {provider: placeholder, seed: 21}
+  palette:
+    background: "#1F2A44"
+    accent: "#E0A458"
+    text: "#F4EFE6"
+    title_text: "#FFFFFF"
+    back: "#1F2A44"
+  back_blurb: "In Alder Bend the river bends twice and the mail still comes by hand. These six stories follow the people of Lantern Lane through one autumn: a letter with no name on it, a map drawn in sugar, a storm that moves a whole street indoors, and the lanterns that come out when the power does not."
+  back_bullets:
+    - "Six complete short stories"
+    - "Cozy, clean and quietly funny"
+    - "Read one with your tea, or all six in an afternoon"
+  barcode_box: true
+
+pricing:
+  marketplace: amazon.com
+  list_price: 9.99
+  ebook_list_price: 2.99
+
+provenance:
+  text: human
+  interior_images: human
+  cover_art: ai_generated

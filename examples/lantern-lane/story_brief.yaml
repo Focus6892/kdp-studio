@@ -1,0 +1,20 @@
+# Brief for `kdp story draft` (needs Claude). Output goes to <this dir>/manuscript by default,
+# so point --out somewhere else if you want to keep the hand-written example manuscript.
+premise: "In the river town of Alder Bend, a blue mailbox on Lantern Lane has quietly delivered letters to people who need them for forty years. When the new postmistress tries to retire it, the town's small kindnesses surface one letter at a time."
+title_hint: "The Lantern Lane Letters"
+genre: "cozy small-town fiction"
+audience: "adult readers of gentle, feel-good fiction"
+chapters: 6
+words_per_chapter: 1500
+pov: "third person limited, rotating between residents"
+tense: past
+tone: "warm, quietly funny, hopeful"
+setting: "a small river town in autumn"
+themes: ["community", "second chances", "the courage of small gestures"]
+content_rules:
+  - "no explicit content"
+  - "no graphic violence"
+  - "no real brands, celebrities or copyrighted characters"
+  - "no profanity"
+names_to_avoid: []
+language: English

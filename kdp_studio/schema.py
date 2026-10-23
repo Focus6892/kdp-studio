@@ -166,10 +166,55 @@ class ColoringInterior(BaseModel):
         return total + (total % 2)
 
 
+class PrintMargins(BaseModel):
+    """Typographic margins in inches; the builder raises `inside` to KDP's gutter minimum when needed."""
+
+    inside: float = Field(0.75, ge=0.375, le=2.0)
+    outside: float = Field(0.6, ge=0.25, le=2.0)
+    top: float = Field(0.75, ge=0.5, le=2.0)
+    bottom: float = Field(0.75, ge=0.5, le=2.0)
+
+
+class EpubOptions(BaseModel):
+    include_cover: bool = True
+    css: str | None = None  # path to a custom stylesheet (relative to the book dir)
+    publisher: str | None = None
+
+
+FrontMatterStory = Literal["title", "copyright", "dedication", "epigraph"]
+BackMatterStory = Literal["about_author", "also_by", "review_cta"]
+
+
 class StoryInterior(BaseModel):
+    """Markdown manuscript -> EPUB3 (reflowable) + print PDF."""
+
     type: Literal["story"] = "story"
-    manuscript_dir: str
-    # Phase 2: markdown -> EPUB + print PDF
+    manuscript_dir: str = "manuscript"
+    chapters_glob: str = "chapters/*.md"
+    body_font: str | None = None  # TTF stem such as 'georgia'; variants are found automatically
+    font_size_pt: float = Field(11.0, ge=7.0, le=16.0)
+    leading: float = Field(1.4, ge=1.0, le=2.0)
+    paragraph_indent_in: float = Field(0.3, ge=0.0, le=1.0)
+    margins: PrintMargins = Field(default_factory=PrintMargins)
+    chapter_start_recto: bool = True
+    running_heads: bool = True
+    page_numbers: bool = True
+    numbered_chapters: bool = True
+    chapter_label: str = "Chapter"
+    front_matter: list[FrontMatterStory] = Field(default_factory=lambda: ["title", "copyright"])
+    back_matter: list[BackMatterStory] = Field(default_factory=list)
+    dedication: str | None = None
+    epigraph: str | None = None
+    epigraph_source: str | None = None
+    about_author: str | None = None
+    also_by: list[str] = Field(default_factory=list)
+    review_cta: str | None = None
+    copyright_notice: str | None = None
+    smart_quotes: bool = True
+    pad_to_min_pages: bool = True
+    min_words: int | None = Field(default=None, ge=0)
+    epub: EpubOptions = Field(default_factory=EpubOptions)
+    kindle_previewer: bool = True
 
 
 Interior = Annotated[Union[ColoringInterior, StoryInterior], Field(discriminator="type")]

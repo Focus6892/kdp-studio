@@ -2,9 +2,9 @@
 
 Bộ công cụ sản xuất sách cho Amazon KDP, bắt đầu từ sách tô màu: một file `book.yaml` làm nguồn sự thật duy nhất → ruột sách PDF, bìa wrap PDF (CMYK, 300 DPI), bìa eBook JPEG và báo cáo preflight kiểm tra theo đúng thông số KDP.
 
-Trạng thái: **Giai đoạn 0** (interior-forge cho sách tô màu + cover-forge + preflight) và **Giai đoạn 1** (niche-scout nghiên cứu ngách + metadata-writer) đã chạy được. Nghiên cứu thị trường, chính sách và kiến trúc đầy đủ của toàn bộ bộ công cụ nằm trong [docs/KDP-Toolkit-Research.md](docs/KDP-Toolkit-Research.md).
+Trạng thái: **Giai đoạn 0** (interior-forge cho sách tô màu + cover-forge + preflight), **Giai đoạn 1** (niche-scout + metadata-writer) và **Giai đoạn 2** (pipeline truyện chữ Markdown → EPUB + PDF in, draft bằng Claude, competitor-watch) đã chạy được. Nghiên cứu thị trường, chính sách và kiến trúc đầy đủ nằm trong [docs/KDP-Toolkit-Research.md](docs/KDP-Toolkit-Research.md).
 
-Luồng làm việc trọn vẹn cho một cuốn: `kdp niche run` (chọn ngách, nhận concept cards) → viết `brief.yaml` → `kdp metadata generate` + `kdp metadata apply` (ghi title/mô tả/keywords/categories vào `book.yaml`) → `kdp build` (ruột, bìa, preflight) → upload thủ công lên KDP.
+Luồng làm việc trọn vẹn cho một cuốn: `kdp niche run` (chọn ngách, nhận concept cards) → `kdp watch insights` (đọc review đối thủ thành differentiation brief) → viết `brief.yaml` → `kdp metadata generate` + `kdp metadata apply` → (truyện: `kdp story draft` hoặc tự viết Markdown) → `kdp build` (ruột, EPUB, bìa, preflight) → upload thủ công lên KDP → `kdp watch snapshot` theo dõi sau xuất bản.
 
 ## Cài đặt
 
@@ -95,13 +95,44 @@ python -m kdp_studio metadata apply --book examples/bold-easy-flowers/book.yaml 
 
 `brief.yaml` ([ví dụ](examples/bold-easy-flowers/brief.yaml)) gồm: `niche_keyword`, `concept_title`, `angle`, `audience`, `differentiators`, `competitor_insights`, `must_include_terms`, `avoid_terms`, `series_name`, `reading_age`, `author`, `page_count`, `image_count`. Có Claude thì các ứng viên được sinh bằng structured output và tự sửa một lần nếu vi phạm luật; không có Claude thì dùng mẫu offline (vẫn qua được validator). Rubric: tuân thủ 40 điểm, keywords 15, title/subtitle 15, mô tả 15, categories 10, khớp brief 5. Kết quả: `metadata/candidates.md` để duyệt và `candidates.json` để apply.
 
+## Truyện chữ — `kdp build` cho `type: story`, `kdp story`
+
+```bash
+# Build ví dụ: 6 chương Markdown -> interior.pdf (5x8, lề gương, chương mở trang lẻ) + .epub + bìa + preflight
+python -m kdp_studio build examples/lantern-lane/book.yaml
+
+# Kiểm tra lại EPUB (cấu trúc EPUB 3) và chạy Kindle Previewer nếu đã cài
+python -m kdp_studio story check examples/lantern-lane/book.yaml
+
+# Viết bản thảo bằng Claude: brief -> story bible -> outline -> từng chương (-> --polish biên tập lại)
+python -m kdp_studio story draft --brief examples/lantern-lane/story_brief.yaml --out drafts/lantern-lane
+```
+
+Bản thảo là thư mục `manuscript/` với `chapters/*.md` (dòng `# Tiêu đề` đầu file là tên chương; `***` là ngắt cảnh; `--` thành gạch ngang dài; ngoặc kép thẳng thành ngoặc cong), tùy chọn `dedication.md`, `epigraph.md`, `about-author.md`, `also-by.md`, `review-cta.md`. Khối `interior` trong `book.yaml` ([ví dụ](examples/lantern-lane/book.yaml)) chọn font, cỡ chữ, lề, nhãn chương, front/back matter.
+
+Những gì builder bảo đảm cho KDP: trang = trim (không bleed), gutter nâng tự động theo số trang (0.375"–0.875"), mọi font nhúng dạng TrueType subset (Helvetica mặc định của reportlab bị thay thế), chương bắt đầu trang lẻ với trang trống chèn tự động, running head và số trang không xuất hiện ở front matter/trang mở chương/trang trống, tổng số trang chẵn và ≥ 24 (chèn trang trống khi `pad_to_min_pages`). EPUB 3: `mimetype` đứng đầu không nén, OPF/nav/NCX, XHTML hợp lệ không entity, bìa `cover-image`; validator nội bộ kiểm tra đúng những lỗi KDP và epubcheck hay bắt. Không cần Pandoc, Typst hay Java.
+
+## Theo dõi đối thủ — `kdp watch`
+
+```bash
+python -m kdp_studio watch add --asin B0XXXXXXXX --label "Competitor A" --niche "bold and easy flowers"
+python -m kdp_studio watch add --asin B0YYYYYYYY --label "Our book" --ours
+python -m kdp_studio watch snapshot --source creators     # hoặc apify | csv --csv export.csv | fixture
+python -m kdp_studio watch report                         # BSR/giá/rating so với 7 và 30 ngày trước + cảnh báo
+python -m kdp_studio watch insights --reviews reviews.txt # review (tự export) -> complaints/praise/requests -> differentiation brief
+python -m kdp_studio watch covers covers/                 # palette (offline) + nhận xét style/thumbnail bằng Claude
+```
+
+Dữ liệu nằm trong `watch/` (watchlist.yaml, watch.sqlite, báo cáo). Cảnh báo mặc định: giảm giá ≥ 15%, BSR cải thiện ≥ 30% hoặc xấu đi ≥ 50% trong 7 ngày, tốc độ nhận rating ≥ 3/ngày. Module không scrape review Amazon; bạn tự export (copy từ trang sản phẩm hoặc extension) rồi đưa file text/JSON vào.
+
 ## book.yaml
 
-Xem [examples/bold-easy-flowers/book.yaml](examples/bold-easy-flowers/book.yaml) có chú thích đầy đủ. Các khối chính:
+Xem [examples/bold-easy-flowers/book.yaml](examples/bold-easy-flowers/book.yaml) (tô màu) và [examples/lantern-lane/book.yaml](examples/lantern-lane/book.yaml) (truyện) có chú thích đầy đủ. Các khối chính:
 
 - `metadata` — title, subtitle, author, `description_html`, 7 `keywords`, 3 `categories`, `reading_age`, `low_content` (phải `false` với sách tô màu).
 - `print` — `trim` (16 cỡ KDP), `paper` (`white_bw`, `cream_bw`, `groundwood_bw`, `standard_color`, `premium_color`), `bleed`, `isbn`.
 - `interior` (type `coloring`) — `theme`, `audience`, số `images`, in một mặt (`single_sided`), front/back matter, `source.provider` (`placeholder` | `folder` | `openai`), `cleanup`, `dedupe`, `qa`, `prompts_with_claude`.
+- `interior` (type `story`) — `manuscript_dir`, `chapters_glob`, `body_font`, `font_size_pt`, `leading`, `margins`, `chapter_start_recto`, `running_heads`, `chapter_label`, front/back matter, `pad_to_min_pages`, `min_words`, `epub`, `kindle_previewer`.
 - `cover` — `art.provider` (`placeholder` | `file` | `openai`), `palette`, font, `back_blurb`, `back_bullets`, `spine_text`, `barcode_box`.
 - `pricing` — `list_price` trên amazon.com.
 - `provenance` — ai/cái gì tạo text, ảnh ruột, ảnh bìa → tool tự suy ra câu trả lời cho mục **AI-Generated Content** của KDP.
@@ -137,7 +168,9 @@ KDP gỡ sách có nội dung "excessively reused, recycled, or repeated within 
 
 ## Giới hạn hiện tại
 
-- Chỉ ruột sách tô màu; ruột truyện chữ (Markdown → EPUB + PDF) là Giai đoạn 2.
+- Ruột truyện chưa có mục lục in (EPUB có nav TOC), chưa hyphenation, chưa hỗ trợ ảnh minh họa trong chương.
+- Kindle Previewer chỉ chạy khi bạn cài sẵn; không có thì bước này báo info và bỏ qua.
+- `kdp story draft` cần Claude; không có fallback offline cho việc viết truyện.
 - Chưa render bìa hardcover (case laminate) — dùng KDP cover calculator.
 - Chuyển RGB → CMYK bằng Pillow (không ICC profile); màu in có thể lệch nhẹ so với màn hình.
 - Upscale bằng LANCZOS + re-threshold; chưa tích hợp Real-ESRGAN.
@@ -150,7 +183,7 @@ KDP gỡ sách có nội dung "excessively reused, recycled, or repeated within 
 
 1. **Giai đoạn 0 (xong)**: schema, interior-forge tô màu, cover-forge, preflight. Upload thủ công 2 cuốn để Amazon xác nhận file chuẩn.
 2. **Giai đoạn 1 (xong)**: `niche-scout` (fixture / CSV / Apify / Creators API, chấm điểm, xu hướng, concept cards) + `metadata-writer` (brief → ứng viên → validator → rubric → apply).
-3. **Giai đoạn 2**: pipeline truyện chữ (Pandoc EPUB, Typst PDF, Kindle Previewer CLI) + `competitor-watch` (theo dõi ASIN theo ngày, khai thác review).
+3. **Giai đoạn 2 (xong)**: pipeline truyện chữ (Markdown → EPUB 3 + PDF in bằng Python thuần, Kindle Previewer tùy chọn, draft bằng Claude) + `competitor-watch` (snapshot ASIN, báo cáo xu hướng và cảnh báo, khai thác review, phân tích bìa).
 4. **Giai đoạn 3**: `assisted-publisher` (Playwright, human-in-the-loop, hàng đợi theo quota tuần) + theo dõi sau xuất bản + dashboard.
 
 ## Cấu trúc
@@ -169,8 +202,10 @@ kdp_studio/
   niche/             models, keywords, autocomplete, scoring, phrases, concepts, store (SQLite), report, pipeline
   niche/sources/     fixture, csv_source, apify, creators
   metadata/          brief, categories, generate (Claude/template + repair), score (rubric), apply (ruamel), report
-  cli.py             validate | build | preflight | price | cover-size | niche … | metadata …
-examples/            book.yaml + brief.yaml mẫu
+  story/             manuscript (Markdown), epub (builder + validator), print_pdf (Platypus), draft (Claude), kindle_previewer, pipeline
+  watch/             models (watchlist), store (SQLite), sources (fixture/csv/creators/apify), report, insights, covers, pipeline
+  cli.py             validate | build | preflight | price | cover-size | niche … | metadata … | story … | watch …
+examples/            bold-easy-flowers (tô màu), lantern-lane (truyện, 6 chương), watchlist.yaml, reviews-sample.txt
 library/             thư viện hash chống trùng xuyên sách
 docs/                báo cáo nghiên cứu KDP & kiến trúc bộ công cụ
 tests/               unit + end-to-end (build thật 10 trang rồi preflight)
