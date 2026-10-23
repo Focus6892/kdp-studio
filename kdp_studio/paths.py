@@ -18,3 +18,13 @@ def project_root() -> Path:
 
 def data_path(*parts: str) -> Path:
     return project_root().joinpath(*parts)
+
+
+def resolve_input(path: str | Path) -> Path:
+    """A book.yaml (or any input) given on the command line: as typed when it exists, otherwise the same
+    relative path inside the project folder, so `examples/<book>/book.yaml` works from any directory."""
+    given = Path(path)
+    if given.exists() or given.is_absolute():
+        return given
+    candidate = project_root() / given
+    return candidate if candidate.exists() else given

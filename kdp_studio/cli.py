@@ -966,6 +966,16 @@ def main(argv: list[str] | None = None) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    if getattr(args, "book", None):  # relative book paths are looked up in the project folder when CWD has none
+        from .paths import project_root, resolve_input
+
+        resolved = resolve_input(args.book)
+        if not resolved.exists():
+            print(f"error: book file not found: {args.book} (looked in {Path.cwd()} and {project_root()})", file=sys.stderr)
+            return 2
+        if str(resolved) != str(args.book):
+            print(f"note: using {resolved} (relative to the project folder)")
+        args.book = str(resolved)
     try:
         return args.func(args)
     except (ValueError, FileNotFoundError, RuntimeError) as exc:
