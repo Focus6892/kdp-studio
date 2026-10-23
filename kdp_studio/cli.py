@@ -584,6 +584,25 @@ def cmd_publish_probe(args) -> int:
     return 0
 
 
+def cmd_publish_diagnose_cover(args) -> int:
+    from .publish.diagnose import explain_cover_size_error
+
+    book = load_book(args.book) if args.book else None
+    if args.message:
+        res = explain_cover_size_error(args.message, pages=args.pages, book=book)
+    else:
+        if not (args.expected and args.submitted):
+            print("Give --message '<KDP error text>' or both --expected WxH and --submitted WxH")
+            return 2
+        res = explain_cover_size_error(args.expected, args.submitted, pages=args.pages, book=book)
+    for line in res["lines"]:
+        print(line)
+    print()
+    for a in res["advice"]:
+        print(f"- {a}")
+    return 0
+
+
 def cmd_publish_selectors(args) -> int:
     from .publish.selectors import dump_default_yaml
 
@@ -895,6 +914,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--follow", help="with --auto: click the link/step with this text before dumping (e.g. 'Rights & Pricing')")
     p.add_argument("--wait", type=float, default=6.0, help="with --auto: seconds to wait for the page (default 6)")
     p.set_defaults(func=cmd_publish_probe)
+    p = psub.add_parser("diagnose-cover", help="decode KDP's 'expected cover size X but submitted Y' error into trim/paper/spine")
+    p.add_argument("--message", help="the full KDP error text")
+    p.add_argument("--expected", help="e.g. 12.313x9.250")
+    p.add_argument("--submitted", help="e.g. 10.320x8.250")
+    p.add_argument("--pages", type=int, help="interior page count (sharpens the paper-type guess)")
+    p.add_argument("--book", help="book.yaml to compare against")
+    p.set_defaults(func=cmd_publish_diagnose_cover)
     p = psub.add_parser("selectors", help="print (or write) the default selector map as YAML")
     p.add_argument("--out")
     p.set_defaults(func=cmd_publish_selectors)

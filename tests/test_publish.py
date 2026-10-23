@@ -69,6 +69,19 @@ def test_checklist_contains_every_field():
     assert "KDP Select" in etext and "$2.99" in etext
 
 
+def test_diagnose_cover_size_error():
+    from kdp_studio.publish.diagnose import explain_cover_size_error, guess_cover
+
+    # the live KDP previewer message from the Lantern Lane test upload (draft left on KDP's 6x9 white defaults)
+    res = explain_cover_size_error("Your expected cover size is 12.313x9.250 but the submitted file size is 10.320x8.250.", pages=28)
+    assert res["expected"].trim == "6x9" and "white_bw" in res["expected"].papers
+    assert res["submitted"].trim == "5x8" and res["submitted"].papers == ["cream_bw"]
+    assert any("Trim Size" in a and "5x8" in a for a in res["advice"])
+    g = guess_cover(17.3986, 11.25, pages=66)
+    assert g.trim == "8.5x11" and "white_bw" in g.papers
+    assert guess_cover(10.32, 8.25).pages_estimate["cream_bw"] == 28
+
+
 def test_selectors_expand_and_override(tmp_path):
     assert expand(["#data-{fmt}-title"], "paperback") == ["#data-print-book-title"]
     assert expand(["#data-{fmt}-keywords-{i}"], "ebook", i=3) == ["#data-ebook-keywords-3"]
