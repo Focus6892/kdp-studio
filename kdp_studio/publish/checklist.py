@@ -94,7 +94,7 @@ def build_checklist(book: Book, fmt: str, quota: QuotaStatus | None = None) -> s
         lines.append("- Launch Previewer: approve every page (bleed, margins, spine text) before continuing.")
     lines.append("")
 
-    lines += ["## 3. Pricing", "", "- Territories: All territories (worldwide rights)"]
+    lines += ["## 3. Pricing", "", "- Territories: All territories (worldwide rights)", "- Primary marketplace: Amazon.com"]
     if fmt == "ebook":
         price = book.pricing.ebook_list_price or 2.99
         lines.append(f"- KDP Select: {'enroll' if book.pricing.kdp_select else 'do not enroll'} (90-day Kindle exclusivity)")
@@ -105,6 +105,7 @@ def build_checklist(book: Book, fmt: str, quota: QuotaStatus | None = None) -> s
             lines.append(f"- List price (amazon.com): ${rep.list_price:.2f} -> printing ${rep.printing_cost:.2f}, royalty {int(rep.royalty_rate * 100)}% = ${rep.royalty_per_copy:.2f} per copy (minimum price ${rep.min_list_price:.2f})")
         else:
             lines.append(f"- List price (amazon.com): ${book.pricing.list_price:.2f} (royalty estimate needs the page count)")
+        lines.append("- Amazon stores: keep every marketplace enrolled in the Amazon program; other prices are based on the Amazon.com price")
         lines.append(f"- Expanded Distribution: {'yes' if book.pricing.expanded_distribution else 'no'}")
     lines.append("")
     lines += ["## 4. After Publish", "", "- Review usually takes about 3 business days; title and author can only be edited within 72 hours of going live.",

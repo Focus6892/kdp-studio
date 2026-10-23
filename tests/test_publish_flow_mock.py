@@ -52,13 +52,26 @@ def test_assisted_flow_against_mock(tmp_path):
         params = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(page.url).query))
         # the tool never publishes
         assert page.evaluate("window.__published") is False
-        assert page.input_value("#data-pricing-print-us-price-input") == "9.99"
-        assert page.is_checked("#data-print-book-pricing-rights-all-territories")
+        assert page.input_value("#price-input-usd") == "9.99"
+        assert page.is_checked("#worldwide-rights")
+        assert page.input_value("#primary-marketplace-value") == "Amazon.com"  # chosen through the ARIA combobox
+        # distribution: the 'Amazon' header was mixed (Amazon.co.jp unticked) -> every store enrolled; Expanded Distribution follows book.yaml (off)
+        assert page.get_attribute("[aria-label='Enroll all marketplaces in Amazon program']", "aria-checked") == "true"
+        assert page.get_attribute("[aria-label='Enroll in Amazon program for Amazon.co.jp']", "aria-checked") == "true"
+        assert page.get_attribute("[aria-label='Enroll all marketplaces in Expanded Distribution program']", "aria-checked") == "false"
+        # KDP converted CAD itself on blur; the flow clicked 'Base this price on Amazon.com' only for the rows left empty
+        assert page.input_value("#price-input-cad") == "13.69"
+        assert page.input_value("#price-input-gbp") == "7.89"
+        assert page.input_value("input[aria-label='Price for Amazon.fr in EUR']") == "9.19"
+        assert page.evaluate("window.__based") == ["Price for Amazon.co.uk in GBP", "Price for Amazon.de in EUR", "Price for Amazon.fr in EUR", "Price for Amazon.co.jp in JPY"]
     finally:
         session.close()
 
     assert result.status == "draft"
     assert result.events == ["created", "draft_saved"]
+    assert {"territories", "primary_marketplace", "amazon_stores", "expanded_distribution", "list_price_us", "other_marketplace_prices"} <= set(result.filled)
+    assert not [f for f, _ in result.unfilled if f.startswith("price:")]
+    assert any(n.startswith("Based on the Amazon.com price") for n in result.notes)
     # details page values travelled through the query string
     assert params["d.data-print-book-title"] == "Bold & Easy Flowers"
     assert params["d.data-print-book-primary-author-last-name"] == "Hartwell" and params["d.data-print-book-primary-author-first-name"] == "Mia"

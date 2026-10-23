@@ -1,19 +1,84 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>Mock KDP – Paperback Pricing</title>
+<html><head><meta charset="utf-8"><title>Mock KDP – Paperback Rights & Pricing</title>
 <script>
+// Mirrors the live KDP Rights & Pricing tab (React redesign, probe dump 2026-10-23): territory radios with ids,
+// a Primary marketplace ARIA combobox, distribution checkboxes known only by aria-label (tri-state headers),
+// #price-input-<currency> inputs (the EUR id repeats) each followed by a "Base this price on Amazon.com" button,
+// and the Publish button the tool must never click.
 window.__published = false;
+window.__based = [];
 function publish() { window.__published = true; document.getElementById('published-flag').textContent = 'PUBLISHED'; }
-</script></head>
+function toggle(el) { el.setAttribute('aria-checked', el.getAttribute('aria-checked') === 'true' ? 'false' : 'true'); }
+function toggleAll(el, program) {
+  const on = el.getAttribute('aria-checked') !== 'true';  // mixed or false -> everything on
+  el.setAttribute('aria-checked', on ? 'true' : 'false');
+  document.querySelectorAll('[aria-label^="Enroll in ' + program + ' program for"]').forEach(c => c.setAttribute('aria-checked', on ? 'true' : 'false'));
+}
+function openList(id) { document.querySelectorAll('[role=listbox]').forEach(l => l.style.display = 'none'); document.getElementById(id + '-list').style.display = 'block'; }
+function pickMarket(el) {
+  document.getElementById('primary-marketplace').textContent = el.textContent;
+  document.getElementById('primary-marketplace-value').value = el.textContent.trim();
+  document.getElementById('primary-marketplace-list').style.display = 'none';
+}
+const RATES = { cad: 1.37, gbp: 0.79, eur: 0.92, jpy: 150 };
+function usd() { return parseFloat(document.getElementById('price-input-usd').value) || 0; }
+// KDP converts the other marketplaces when the US price is committed; the mock converts only CAD so the flow has to base the rest
+function convertOnBlur() { const v = usd(); if (v) document.getElementById('price-input-cad').value = (v * RATES.cad).toFixed(2); }
+function base(btn) {
+  const inp = btn.closest('.row').querySelector('input');
+  const cur = inp.id.replace('price-input-', '');
+  inp.value = (usd() * RATES[cur]).toFixed(cur === 'jpy' ? 0 : 2);
+  window.__based.push(inp.getAttribute('aria-label'));
+}
+</script>
+<style>
+[role=listbox]{border:1px solid #888;background:#fff;position:absolute} [role=option]{padding:2px 6px;cursor:pointer}
+[role=combobox]{border:1px solid #888;padding:4px;width:260px;display:inline-block}
+[role=checkbox]{display:inline-block;width:14px;height:14px;border:1px solid #444;margin:0 6px;vertical-align:middle}
+[role=checkbox][aria-checked=true]{background:#2a6} [role=checkbox][aria-checked=mixed]{background:#aa6}
+.row{margin:4px 0} .row input{width:80px}
+</style>
+</head>
 <body>
 <h1>Paperback Rights & Pricing (mock)</h1>
-<fieldset><legend>Territories</legend>
-  <label><input type="radio" name="territories" id="data-print-book-pricing-rights-all-territories" value="all"> All territories (worldwide rights)</label>
-  <label><input type="radio" name="territories" id="data-print-book-pricing-rights-individual" value="individual"> Individual territories</label>
-</fieldset>
-<fieldset><legend>Pricing</legend>
-  <label>Amazon.com list price $ <input id="data-pricing-print-us-price-input" type="text"></label>
-  <label><input type="checkbox" id="data-pricing-print-expanded-distribution" value="yes"> Expanded Distribution</label>
-</fieldset>
-<button id="save-and-publish-announce" onclick="publish()">Publish Your Paperback Book</button>
+<h2>Territories</h2>
+<label><input type="radio" name="territory-selection-type" id="worldwide-rights" value="worldwide"> All territories (worldwide rights)</label>
+<label><input type="radio" name="territory-selection-type" id="individual-territories" value="individual"> Individual territories</label>
+<h2 id="primary-marketplace-label">Primary marketplace</h2>
+<div id="primary-marketplace" role="combobox" aria-labelledby="primary-marketplace-label" aria-expanded="false" tabindex="0" onclick="openList('primary-marketplace')">Amazon.co.uk</div>
+<div id="primary-marketplace-list" role="listbox" style="display:none">
+  <div role="option" onclick="pickMarket(this)">Amazon.com</div>
+  <div role="option" onclick="pickMarket(this)">Amazon.co.uk</div>
+  <div role="option" onclick="pickMarket(this)">Amazon.de</div>
+</div><input type="hidden" id="primary-marketplace-value" value="Amazon.co.uk">
+<h2>Pricing, royalties, and distribution</h2>
+<div class="row"><b>All marketplaces</b>
+  <div role="checkbox" aria-label="Enroll all marketplaces in Amazon program" aria-checked="mixed" tabindex="0" onclick="toggleAll(this, 'Amazon')"></div>Amazon
+  <div role="checkbox" aria-label="Enroll all marketplaces in Expanded Distribution program" aria-checked="false" tabindex="0" onclick="toggleAll(this, 'Expanded Distribution')"></div>Expanded Distribution
+</div>
+<div class="row">Amazon.com <input type="text" id="price-input-usd" aria-label="Price for Amazon.com in USD" placeholder="0.00" onblur="convertOnBlur()">
+  <div role="checkbox" aria-label="Enroll in Amazon program for Amazon.com" aria-checked="true" tabindex="0" onclick="toggle(this)"></div>
+  <div role="checkbox" aria-label="Enroll in Expanded Distribution program for Amazon.com" aria-checked="false" tabindex="0" onclick="toggle(this)"></div></div>
+<div class="row">Amazon.ca <input type="text" id="price-input-cad" aria-label="Price for Amazon.ca in CAD" placeholder="0.00">
+  <a role="button" aria-label="Base this price on Amazon.com" href="#" onclick="base(this); return false;">Base this price on Amazon.com</a>
+  <div role="checkbox" aria-label="Enroll in Amazon program for Amazon.ca" aria-checked="true" tabindex="0" onclick="toggle(this)"></div></div>
+<div class="row">Amazon.co.uk <input type="text" id="price-input-gbp" aria-label="Price for Amazon.co.uk in GBP" placeholder="0.00">
+  <a role="button" aria-label="Base this price on Amazon.com" href="#" onclick="base(this); return false;">Base this price on Amazon.com</a>
+  <div role="checkbox" aria-label="Enroll in Amazon program for Amazon.co.uk" aria-checked="true" tabindex="0" onclick="toggle(this)"></div>
+  <div role="checkbox" aria-label="Enroll in Expanded Distribution program for Amazon.co.uk" aria-checked="false" tabindex="0" onclick="toggle(this)"></div></div>
+<div class="row">Amazon.de <input type="text" id="price-input-eur" aria-label="Price for Amazon.de in EUR" placeholder="0.00">
+  <a role="button" aria-label="Base this price on Amazon.com" href="#" onclick="base(this); return false;">Base this price on Amazon.com</a>
+  <div role="checkbox" aria-label="Enroll in Amazon program for Amazon.de" aria-checked="true" tabindex="0" onclick="toggle(this)"></div></div>
+<div class="row">Amazon.fr <input type="text" id="price-input-eur" aria-label="Price for Amazon.fr in EUR" placeholder="0.00">
+  <a role="button" aria-label="Base this price on Amazon.com" href="#" onclick="base(this); return false;">Base this price on Amazon.com</a>
+  <div role="checkbox" aria-label="Enroll in Amazon program for Amazon.fr" aria-checked="true" tabindex="0" onclick="toggle(this)"></div></div>
+<div class="row">Amazon.co.jp <input type="text" id="price-input-jpy" aria-label="Price for Amazon.co.jp in JPY" placeholder="0.00">
+  <a role="button" aria-label="Base this price on Amazon.com" href="#" onclick="base(this); return false;">Base this price on Amazon.com</a>
+  <div role="checkbox" aria-label="Enroll in Amazon program for Amazon.co.jp" aria-checked="false" tabindex="0" onclick="toggle(this)"></div></div>
+<h2>Terms &amp; Conditions</h2>
+<p>By clicking Publish, I confirm that I agree to the KDP Terms and Conditions.</p>
+<button type="button">&lt; Back to Content</button>
+<button type="button" onclick="alert('draft saved')">Save as Draft</button>
+<button type="button" onclick="publish()">Publish Your Paperback Book</button>
 <span id="published-flag"></span>
 </body></html>

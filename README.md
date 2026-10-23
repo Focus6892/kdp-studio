@@ -146,10 +146,12 @@ python -m kdp_studio publish next                                               
 python -m kdp_studio publish run examples/bold-easy-flowers/book.yaml --format paperback         # chạy trực tiếp một cuốn
 python -m kdp_studio publish mark examples/bold-easy-flowers/book.yaml --format paperback --status live --asin B0XXXXXXXX
 python -m kdp_studio publish probe                                                               # mở KDP, xem selector nào còn khớp khi Amazon đổi giao diện
+python -m kdp_studio publish probe --auto --url "https://kdp.amazon.com/en_US/print-setup/paperback/<ID>/content" --follow "Rights & Pricing"   # probe đúng một trang rồi thoát
 python -m kdp_studio publish selectors --out kdp_selectors.yaml                                  # ghi selector mặc định ra để chỉnh, dùng với --selectors
+python -m kdp_studio publish diagnose-cover --message "Your expected cover size is 12.313x9.250 but the submitted file size is 10.320x8.250" --pages 28 --book book.yaml   # giải mã lỗi bìa của Previewer ra trim/giấy/gáy
 ```
 
-Selector của KDP được viết theo mẫu id `data-print-book-*` / `data-ebook-*` và có fallback theo nhãn, nhưng Amazon đổi DOM không báo trước: hãy chạy `probe` lần đầu và chỉnh file YAML nếu cần. Field nào không điền được sẽ được liệt kê để bạn nhập tay; categories luôn chọn tay trong hộp thoại của KDP. Luồng này được test trên một bản mock của ba trang KDP (`tests/mock_kdp/`) chứ chưa chạy trên tài khoản thật.
+Bộ selector mặc định đã được đối chiếu với tài khoản KDP thật (paperback, 2026-10-23) trên cả ba tab: Details còn dùng id `data-print-book-*` và CKEditor cho mô tả; Content và Rights & Pricing là giao diện React mới — radio theo `name`/`value`, combobox ARIA cho Trim Size, AI và Primary marketplace, checkbox ARIA chỉ nhận diện bằng `aria-label` (cột Amazon / Expanded Distribution), ô giá `#price-input-<currency>` kèm nút "Base this price on Amazon.com" mà tool chỉ bấm cho ô KDP bỏ trống. Luồng eBook mới chạy trên mock. Amazon đổi DOM không báo trước: khi lệch, chạy `probe` (hoặc `probe --auto --follow`) rồi chỉnh file YAML. Field nào không điền được sẽ được liệt kê để bạn nhập tay; categories luôn chọn tay trong hộp thoại của KDP. Luồng điền được test trên bản mock của ba trang KDP (`tests/mock_kdp/`, dựng theo đúng cấu trúc đã probe).
 
 ## Sau xuất bản — `kdp monitor`
 
@@ -212,7 +214,7 @@ KDP gỡ sách có nội dung "excessively reused, recycled, or repeated within 
 - Chuyển RGB → CMYK bằng Pillow (không ICC profile); màu in có thể lệch nhẹ so với màn hình.
 - Upscale bằng LANCZOS + re-threshold; chưa tích hợp Real-ESRGAN.
 - Ước lượng DPI trong preflight giả định ảnh trải hết chiều rộng trang.
-- `kdp publish run` mới được kiểm chứng trên mock KDP; selector thật có thể cần chỉnh qua `publish probe`. Tool chủ ý không tự bấm Publish và không có chế độ chạy không người.
+- `kdp publish run`: selector đã đối chiếu với KDP thật (paperback, 2026-10-23) nhưng luồng điền trọn vẹn mới chạy trên mock; eBook chưa probe. Tool chủ ý không tự bấm Publish và không có chế độ chạy không người.
 - `monitor ads`/`monitor sales` đọc file export bạn tải về; không có API cho Ads/Reports của KDP.
 - Nguồn `apify` và `creators` được viết theo tài liệu công khai nhưng chưa chạy với credential thật trong repo này; nguồn `csv` và `fixture` đã test. Chưa có Keepa và Google Trends.
 - Danh sách categories là gợi ý thường gặp; luôn xác nhận lại trong màn hình chọn category của KDP.
@@ -223,7 +225,7 @@ KDP gỡ sách có nội dung "excessively reused, recycled, or repeated within 
 2. **Giai đoạn 1 (xong)**: `niche-scout` (fixture / CSV / Apify / Creators API, chấm điểm, xu hướng, concept cards) + `metadata-writer` (brief → ứng viên → validator → rubric → apply).
 3. **Giai đoạn 2 (xong)**: pipeline truyện chữ (Markdown → EPUB 3 + PDF in bằng Python thuần, Kindle Previewer tùy chọn, draft bằng Claude) + `competitor-watch` (snapshot ASIN, báo cáo xu hướng và cảnh báo, khai thác review, phân tích bìa).
 4. **Giai đoạn 3 (xong)**: `assisted-publisher` (Playwright trên Edge/Chrome của bạn, human-in-the-loop, hàng đợi theo quota tuần, checklist, probe selector) + `monitor` (trạng thái tựa, ASIN của mình qua competitor-watch, Amazon Ads CSV, royalty KDP).
-5. **Tiếp theo**: chạy thử trên tài khoản KDP thật và chỉnh selector; dashboard web gộp các báo cáo; Keepa/Google Trends cho niche-scout; Real-ESRGAN và ICC CMYK cho sách tô màu.
+5. **Tiếp theo**: chạy `publish run` trọn vẹn trên tài khoản thật (selector đã chốt) và probe luồng eBook; dashboard web gộp các báo cáo; Keepa/Google Trends cho niche-scout; Real-ESRGAN và ICC CMYK cho sách tô màu.
 
 ## Cấu trúc
 

@@ -101,14 +101,30 @@ DEFAULT_SELECTORS: dict = {
         "save_draft": ["button:has-text('Save as Draft')", "#save-announce"],
         "save_continue": ["button:has-text('Save and Continue')", "#save-and-continue-announce"],
     },
-    "pricing": {  # unverified: probe the Rights & Pricing tab and adjust
-        "page_markers": ["input[id*='us-price']", "label:has-text('All territories')", "input[name*='territor']", "button:has-text('Publish')"],
-        "all_territories": ["#data-print-book-pricing-rights-all-territories", "#data-ebook-pricing-rights-all-territories", "input[name*='territor'][value='all']", "input[name*='territor'][value='ALL']", "label:has-text('All territories')"],
-        "kdp_select": ["#data-ebook-kdp-select-enroll", "input[name*='kdp-select']", "input[name*='kdpSelect']", "label:has-text('Enroll my eBook in KDP Select')"],
-        "price_us": ["#data-pricing-print-us-price-input", "#data-pricing-ebook-us-price-input", "input[id*='us-price']", "input[name*='price'][name*='US']"],
-        "expanded_distribution": ["#data-pricing-print-expanded-distribution", "input[name*='expanded']", "label:has-text('Expanded Distribution')"],
+    # Rights & Pricing tab (React redesign, verified 2026-10-23 on a paperback draft at print-setup/<fmt>/<id>/pricing).
+    # Territory radios carry ids; the distribution checkboxes are ARIA checkboxes known only by their aria-label;
+    # price inputs are #price-input-<currency> (the EUR id repeats across seven marketplaces, so aria-labels win).
+    # The eBook variant (KDP Select, royalty plan) has not been probed yet - those candidates are still guesses.
+    "pricing": {
+        "page_markers": ["#worldwide-rights", "input[name='territory-selection-type']", "#price-input-usd", "button:has-text('Publish Your')", "input[id*='us-price']"],
+        "all_territories": ["#worldwide-rights", "input[name='territory-selection-type'][value='worldwide']", "#data-print-book-pricing-rights-all-territories", "#data-ebook-pricing-rights-all-territories", {"role": "radio", "name": "All territories"}],
+        "individual_territories": ["#individual-territories", "input[name='territory-selection-type'][value='individual']"],
+        "primary_marketplace": ["#primary-marketplace", {"role": "combobox", "name": "Primary marketplace"}, "select[name*='home_marketplace']"],
+        # distribution columns: "Amazon" = on sale in that Amazon store (keep all ticked); Expanded Distribution exists for .com and .co.uk only
+        "amazon_all": ["[role='checkbox'][aria-label='Enroll all marketplaces in Amazon program']"],
+        "amazon_us": ["[role='checkbox'][aria-label='Enroll in Amazon program for Amazon.com']"],
+        "expanded_distribution_all": ["[role='checkbox'][aria-label='Enroll all marketplaces in Expanded Distribution program']"],
+        "expanded_distribution": ["[role='checkbox'][aria-label='Enroll in Expanded Distribution program for Amazon.com']", "#data-pricing-print-expanded-distribution", "input[name*='expanded']"],
+        "expanded_distribution_uk": ["[role='checkbox'][aria-label='Enroll in Expanded Distribution program for Amazon.co.uk']"],
+        "price_us": ["#price-input-usd", "input[aria-label='Price for Amazon.com in USD']", "#data-pricing-print-us-price-input", "#data-pricing-ebook-us-price-input", "input[id*='us-price']"],
+        "price_inputs": ["input[aria-label^='Price for Amazon']", "input[id^='price-input-']"],
+        # one per non-US marketplace, right after its price input; clicked only for rows KDP left empty
+        "base_on_us": ["a[aria-label='Base this price on Amazon.com'], [role='button'][aria-label='Base this price on Amazon.com']"],
+        "kdp_select": ["#data-ebook-kdp-select-enroll", "input[name*='kdp-select']", "input[name*='kdpSelect']", "[role='checkbox'][aria-label*='KDP Select']", "label:has-text('Enroll my eBook in KDP Select')"],
+        "back": ["button:has-text('Back to Content')"],
         "save_draft": ["button:has-text('Save as Draft')", "#save-announce"],
-        "publish": ["#save-and-publish-announce", "button:has-text('Publish Your')", "button:has-text('Publish')"],
+        # located for the page marker and screenshots only - the flow never clicks it
+        "publish": ["button:has-text('Publish Your')", "#save-and-publish-announce", "button:has-text('Publish')"],
     },
 }
 

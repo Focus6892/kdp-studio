@@ -319,6 +319,8 @@ class BrowserSession:
             return False
 
     def check(self, candidates: list[str]) -> bool:
+        """Tick a native or ARIA (role=checkbox/radio) control; already-ticked controls are left alone.
+        Styled inputs that refuse the click fall back to their <label for=...>, as a human would click."""
         loc = self.find(candidates)
         if loc is None:
             return False
@@ -331,7 +333,75 @@ class BrowserSession:
             return True
         except Exception as exc:  # noqa: BLE001
             log.info("check failed: %s", str(exc).splitlines()[0][:120])
+        try:
+            el_id = loc.get_attribute("id")
+            if el_id:
+                lab = self.page.locator(f"label[for='{el_id}']")
+                if lab.count() > 0:
+                    lab.first.click()
+                    return bool(loc.is_checked())
+        except Exception as exc:  # noqa: BLE001
+            log.info("label fallback failed: %s", str(exc).splitlines()[0][:120])
+        return False
+
+    def press(self, candidates: list[str], key: str) -> bool:
+        """Send a key to the first matching element (Tab commits a React input and fires its onBlur)."""
+        loc = self.find(candidates)
+        if loc is None:
             return False
+        try:
+            loc.press(key)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            log.info("press failed: %s", str(exc).splitlines()[0][:120])
+            return False
+
+    def value(self, candidates: list[str]) -> str | None:
+        loc = self.find(candidates)
+        if loc is None:
+            return None
+        try:
+            return loc.input_value()
+        except Exception:  # noqa: BLE001 - not an input
+            try:
+                return loc.evaluate("el => (el.value ?? el.textContent ?? '').trim()")
+            except Exception:  # noqa: BLE001
+                return None
+
+    def click_nth(self, candidates: list[str], index: int) -> bool:
+        """Click the index-th element (DOM order) of the first candidate that has more than `index` matches."""
+        for cand in candidates:
+            for scope in self._scopes():
+                try:
+                    loc = self._locator(scope, cand)
+                    if loc.count() > index:
+                        loc.nth(index).click()
+                        return True
+                except Exception as exc:  # noqa: BLE001
+                    log.info("click_nth failed: %s", str(exc).splitlines()[0][:120])
+        return False
+
+    def marketplace_prices(self) -> list[dict]:
+        """The redesigned Pricing tab: one 'Price for <marketplace> in <currency>' input per marketplace, each
+        (except Amazon.com) followed by a 'Base this price on Amazon.com' button. Returns rows in DOM order as
+        {label, id, value, base_index}; base_index is that button's position among all such buttons on the page,
+        which is what `click_nth` needs. Values are read only to see whether a row is still empty."""
+        js = """() => {
+            const sel = "input[aria-label^='Price for Amazon'], input[id^='price-input-'], a[aria-label='Base this price on Amazon.com'], [role='button'][aria-label='Base this price on Amazon.com']";
+            const out = []; let cur = null; let b = 0;
+            for (const n of document.querySelectorAll(sel)) {
+              if (n.tagName === 'INPUT') { cur = {label: n.getAttribute('aria-label') || n.id || '', id: n.id || '', value: (n.value || '').trim(), base_index: null}; out.push(cur); }
+              else { if (cur && cur.base_index === null) cur.base_index = b; b += 1; }
+            }
+            return out; }"""
+        for scope in self._scopes():
+            try:
+                rows = scope.evaluate(js)
+            except Exception:  # noqa: BLE001
+                continue
+            if rows:
+                return rows
+        return []
 
     def uncheck(self, candidates: list[str]) -> bool:
         loc = self.find(candidates)

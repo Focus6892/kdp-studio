@@ -238,16 +238,86 @@ class Flow:
 
     def fill_pricing(self) -> None:
         pr = self.book.pricing
-        self._record(self.s.check(self._c("pricing", "all_territories")), "territories", "all")
+        self._record(self.s.check(self._c("pricing", "all_territories")), "territories", "All territories (worldwide rights)")
+        self._choose_primary_marketplace()
         if self.fmt == "ebook":
             price = pr.ebook_list_price or pr.list_price
             if pr.kdp_select:
                 self._record(self.s.check(self._c("pricing", "kdp_select")), "kdp_select", "enroll")
         else:
             price = pr.list_price
+            # distribution columns: the book must stay on sale in every Amazon store; Expanded Distribution follows book.yaml
+            amazon_all = self._c("pricing", "amazon_all")
+            if self.s.find(amazon_all) is not None:
+                self._record(self.s.check(amazon_all), "amazon_stores", "all marketplaces enrolled")
+            ed_all, ed_us = self._c("pricing", "expanded_distribution_all"), self._c("pricing", "expanded_distribution")
             if pr.expanded_distribution:
-                self._record(self.s.check(self._c("pricing", "expanded_distribution")), "expanded_distribution", "yes")
-        self._record(self.s.fill(self._c("pricing", "price_us"), f"{price:.2f}"), "list_price_us", f"{price:.2f}")
+                self._record(self.s.check(ed_all) or self.s.check(ed_us), "expanded_distribution", "yes")
+            elif self.s.find(ed_all) is not None:
+                self._record(self.s.uncheck(ed_all), "expanded_distribution", "no")
+            elif self.s.find(ed_us) is not None:
+                self._record(self.s.uncheck(ed_us), "expanded_distribution", "no")
+        price_us = self._c("pricing", "price_us")
+        self._record(self.s.fill(price_us, f"{price:.2f}"), "list_price_us", f"{price:.2f}")
+        self.s.press(price_us, "Tab")  # commit the value so KDP converts the other marketplaces
+        self._base_other_marketplaces()
+
+    def _choose_primary_marketplace(self) -> None:
+        """The redesigned Pricing tab repeats the primary marketplace as a combobox (older UI: a <select>)."""
+        cands = self._c("pricing", "primary_marketplace")
+        loc = self.s.find(cands)
+        if loc is None:
+            return
+        try:
+            tag = loc.evaluate("el => el.tagName.toLowerCase()")
+        except Exception:  # noqa: BLE001
+            tag = ""
+        label = {"amazon.com": "Amazon.com"}.get(self.book.pricing.marketplace, self.book.pricing.marketplace)
+        if tag == "select":
+            ok = self.s.select(cands, label_equals=label, label_contains=label)
+        else:
+            ok = self.s.choose_combobox(loc, label_equals=label, label_contains=label)
+        self._record(ok, "primary_marketplace", label)
+
+    def _base_other_marketplaces(self) -> None:
+        """KDP converts the other marketplaces from the Amazon.com price. Where it left a row empty, click that
+        row's 'Base this price on Amazon.com' so no marketplace goes out without a price. Rows are re-read after
+        every click because React may re-render the buttons."""
+        self._pause(800)
+        base = self._c("pricing", "base_on_us")
+        clicked: list[str] = []
+        skipped: list[str] = []
+        rows: list[dict] = []
+        for _ in range(24):
+            rows = self.s.marketplace_prices()
+            todo = [r for r in rows if not self._is_us_row(r) and r["value"] in ("", "0", "0.00") and r["label"] not in skipped]
+            if not todo:
+                break
+            row = todo[0]
+            if row["base_index"] is None or not self.s.click_nth(base, row["base_index"]):
+                skipped.append(row["label"])
+                continue
+            clicked.append(row["label"])
+            self._pause(300)
+        if not rows:
+            return  # older UI without per-marketplace inputs: nothing to do
+        if clicked:
+            self.res.notes.append("Based on the Amazon.com price: " + ", ".join(clicked))
+        for label in skipped:
+            self._record(False, f"price:{label}", "enter by hand or click 'Base this price on Amazon.com'")
+        if not skipped:
+            self._record(True, "other_marketplace_prices", "based on Amazon.com")
+
+    def _pause(self, ms: int) -> None:
+        try:
+            self.s.page.wait_for_timeout(ms)
+        except Exception:  # noqa: BLE001
+            pass
+
+    @staticmethod
+    def _is_us_row(row: dict) -> bool:
+        label = (row.get("label") or "").lower()
+        return row.get("id") == "price-input-usd" or label.startswith("price for amazon.com in") or "us-price" in (row.get("id") or "")
 
     # ---------------------------------------------------------------- run
     def run(self, start_url: str | None = None) -> FlowResult:
