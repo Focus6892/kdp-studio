@@ -557,6 +557,10 @@ def cmd_publish_probe(args) -> int:
                 inv = s.inventory()
                 total = sum(len(sc["elements"]) for sc in inv["scopes"])
                 print(f"\nPage: {inv.get('title')!r} — {inv.get('url')}\nFrames: {len(inv['frames'])}, form controls found: {total}")
+                if total == 0:
+                    errs = "; ".join(f.get("error", "") for f in inv["frames"] if f.get("error"))
+                    print(f"Nothing readable on this page yet ({errs or 'no form controls'}). Let it finish loading, then press Enter again - no dump written.")
+                    continue
                 for group in ("details", "ai", "content", "pricing"):
                     m = s.matches(sel[group], args.format)
                     hits = sum(1 for v in m.values() if v)

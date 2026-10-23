@@ -203,9 +203,29 @@ class BrowserSession:
             log.info("upload via button failed: %s", str(exc).splitlines()[0][:120])
             return False
 
-    def inventory(self, limit: int = 600) -> dict:
+    def inventory(self, limit: int = 600, retries: int = 4) -> dict:
         """Structural dump of every form control and button on the page and its frames.
-        Captures ids, names, labels and option values only - never what the user typed."""
+        Captures ids, names, labels and option values only - never what the user typed.
+        A dump taken while the page is still navigating ("Execution context was destroyed")
+        is retried after the load settles, so pressing Enter a moment too early still yields data."""
+        out = self._inventory_once(limit)
+        for _ in range(retries - 1):
+            if not self._navigating(out):
+                break
+            try:
+                self.page.wait_for_load_state("load", timeout=20000)
+                self.page.wait_for_timeout(1200)
+            except Exception:  # noqa: BLE001
+                pass
+            out = self._inventory_once(limit)
+        return out
+
+    @staticmethod
+    def _navigating(inv: dict) -> bool:
+        errs = [f.get("error", "") for f in inv.get("frames", [])]
+        return (not inv.get("scopes")) or any("destroyed" in e or "navigation" in e.lower() for e in errs)
+
+    def _inventory_once(self, limit: int) -> dict:
         js = """
         () => {
           const q = 'input, select, textarea, button, [contenteditable="true"], a[role="button"], [role="radio"], [role="checkbox"], [role="combobox"]';
