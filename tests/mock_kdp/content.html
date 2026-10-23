@@ -16,6 +16,13 @@ function confirmIsbn() { document.getElementById('isbn-value').textContent = '97
 </script></head>
 <body>
 <h1>Paperback Content (mock)</h1>
+<fieldset><legend>AI-generated content</legend>
+  <label><input type="radio" name="data[print_book][ai_content]-radio" id="mock-ai-yes" value="true"> Yes</label>
+  <label><input type="radio" name="data[print_book][ai_content]-radio" id="mock-ai-no" value="false"> No</label><br>
+  Text <select id="mock-ai-text" name="data[print_book][ai_content][text]"><option value="none">None</option><option value="some-min">Some sections, with minimal or no editing</option><option value="entire-min">Entire work, with minimal or no editing</option><option value="entire-ext">Entire work, with extensive editing</option></select>
+  Images <select id="mock-ai-images" name="data[print_book][ai_content][images]"><option value="none">None</option><option value="some-min">One or a few, with minimal or no editing</option><option value="entire-min">Many or all, with minimal or no editing</option></select>
+  Translation <select id="mock-ai-translation" name="data[print_book][ai_content][translation]"><option value="none">None</option><option value="entire-min">Entire work, with minimal or no editing</option></select>
+</fieldset>
 <fieldset><legend>ISBN</legend>
   <button id="free-print-isbn-btn-announce" onclick="freeIsbn()">Assign me a free KDP ISBN</button>
   <div id="isbn-confirm-box" style="display:none"><button id="print-isbn-confirm-button-announce" onclick="confirmIsbn()">Assign ISBN</button></div>

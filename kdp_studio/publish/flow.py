@@ -75,7 +75,12 @@ class Flow:
         return expand(self.sel[group][field], self.fmt, **kw)
 
     def _record(self, ok: bool, field: str, value: str) -> None:
-        (self.res.filled if ok else self.res.unfilled).append(field if ok else (field, value))
+        if ok:
+            if field not in self.res.filled:
+                self.res.filled.append(field)
+            self.res.unfilled = [(f, v) for f, v in self.res.unfilled if f != field]  # filled on a later tab
+        elif field not in self.res.filled and all(f != field for f, _ in self.res.unfilled):
+            self.res.unfilled.append((field, value))
 
     def _gate(self, prompt: str) -> str:
         ans = self.approver.ask(prompt).strip().lower()
@@ -118,12 +123,34 @@ class Flow:
         if not self.s.wait_for(self._c("details", "title"), timeout_s=60):
             self._gate("The Details page did not appear. Open the new title's Details tab yourself, then press Enter:")
 
+    def fill_ai_disclosure(self) -> bool:
+        """KDP's 'AI-Generated Content' block (on the Content tab at the time of writing; the flow
+        tries it on every tab and fills it where it exists). Returns True when the block was found."""
+        if self.s.find(self._c("ai", "ai_yes")) is None and self.s.find(self._c("ai", "ai_no")) is None:
+            return False
+        disclosure = self.book.ai_disclosure()
+        used_ai = disclosure["Did you use AI tools in creating texts, images and/or translations?"] == "Yes"
+        self._record(self.s.check(self._c("ai", "ai_yes" if used_ai else "ai_no")), "ai_content", "yes" if used_ai else "no")
+        if used_ai:
+            for key, fld in (("Text", "ai_text"), ("Images", "ai_images"), ("Translations", "ai_translation")):
+                if disclosure[key].startswith("AI-generated"):
+                    # KDP words the scope options differently per category ("Entire work" / "Many or all" / "Some sections" /
+                    # "One or a few"); pick the broadest declared option, never "None", and leave the editing level to the human.
+                    ok = self.s.select(self._c("ai", fld), label_contains=["entire", "many or all", "all", "some", "one or a few"], exclude_contains="none")
+                    self._record(ok, f"ai_{key.lower()}", "AI-generated (confirm scope and editing level yourself)")
+                    self.res.notes.append(f"AI {key}: declared as AI-generated; confirm the scope and editing level that match your workflow.")
+                else:
+                    self.s.select(self._c("ai", fld), label_contains="none")
+        return True
+
     def fill_details(self) -> None:
         md = self.book.metadata
-        self._record(self.s.select(self._c("details", "language"), label_contains=md.language), "language", md.language)
+        self._record(self.s.select(self._c("details", "language"), label_equals=md.language, label_contains=md.language), "language", md.language)
         self._record(self.s.fill(self._c("details", "title"), md.title), "title", md.title)
         if md.subtitle:
             self._record(self.s.fill(self._c("details", "subtitle"), md.subtitle), "subtitle", md.subtitle)
+        if md.edition:
+            self._record(self.s.fill(self._c("details", "edition"), md.edition), "edition", md.edition)
         first, last = split_author(md.author)
         if first:
             self._record(self.s.fill(self._c("details", "author_first"), first), "author_first", first)
@@ -132,31 +159,26 @@ class Flow:
         self._record(self.s.check(self._c("details", "rights_own")), "publishing_rights", "own copyright")
         self._record(self.s.check(self._c("details", "adult_yes" if md.sexually_explicit else "adult_no")), "sexually_explicit", "yes" if md.sexually_explicit else "no")
         if md.reading_age:
-            self._record(self.s.select(self._c("details", "age_min"), value=str(md.reading_age.min)) or self.s.select(self._c("details", "age_min"), label_contains=str(md.reading_age.min)), "reading_age_min", str(md.reading_age.min))
-            self._record(self.s.select(self._c("details", "age_max"), value=str(md.reading_age.max)) or self.s.select(self._c("details", "age_max"), label_contains=str(md.reading_age.max)), "reading_age_max", str(md.reading_age.max))
-        disclosure = self.book.ai_disclosure()
-        used_ai = disclosure["Did you use AI tools in creating texts, images and/or translations?"] == "Yes"
-        self._record(self.s.check(self._c("details", "ai_yes" if used_ai else "ai_no")), "ai_content", "yes" if used_ai else "no")
-        if used_ai:
-            for key, fld in (("Text", "ai_text"), ("Images", "ai_images"), ("Translations", "ai_translation")):
-                if disclosure[key].startswith("AI-generated"):
-                    # KDP words the scope options differently per category ("Entire work" / "Many or all" / "Some sections" /
-                    # "One or a few"); pick the broadest declared option, never "None", and leave the editing level to the human.
-                    ok = self.s.select(self._c("details", fld), label_contains=["entire", "many or all", "all", "some", "one or a few"], exclude_contains="none")
-                    self._record(ok, f"ai_{key.lower()}", "AI-generated (confirm scope and editing level yourself)")
-                    self.res.notes.append(f"AI {key}: declared as AI-generated; confirm the scope and editing level that match your workflow.")
-                else:
-                    self.s.select(self._c("details", fld), label_contains="none")
+            lo, hi = str(md.reading_age.min), str(md.reading_age.max)
+            self._record(self.s.select(self._c("details", "age_min"), value=lo, label_equals=lo), "reading_age_min", lo)
+            self._record(self.s.select(self._c("details", "age_max"), value=hi, label_equals=hi), "reading_age_max", hi)
+        marketplace = {"amazon.com": "Amazon.com"}.get(self.book.pricing.marketplace, self.book.pricing.marketplace)
+        if self.s.find(self._c("details", "primary_marketplace")) is not None:
+            self._record(self.s.select(self._c("details", "primary_marketplace"), label_equals=marketplace), "primary_marketplace", marketplace)
+        self.fill_ai_disclosure()
         for i, kw in enumerate(md.keywords[:7]):
             self._record(self.s.fill(self._c("details", "keyword", i=i), kw), f"keyword_{i + 1}", kw)
         if md.low_content:
             self._record(self.s.check(self._c("details", "low_content")), "low_content", "yes")
         else:
             self.s.uncheck(self._c("details", "low_content"))
-        self.res.notes.append("Categories must be picked in KDP's category dialog: " + " | ".join(md.categories))
+        if md.large_print:
+            self._record(self.s.check(self._c("details", "large_print")), "large_print", "yes")
+        self.res.notes.append("Categories must be picked in KDP's 'Choose categories' dialog: " + " | ".join(md.categories))
 
     def fill_content(self) -> None:
         art = artifacts_for(self.book, self.fmt)
+        self.fill_ai_disclosure()
         if self.fmt != "ebook":
             p = self.book.print_
             if p.isbn == "kdp_free":

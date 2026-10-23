@@ -1,10 +1,12 @@
 """Selectors for the KDP title-setup pages.
 
-Amazon changes its DOM without notice, so every field has an ordered list of
-candidate selectors (CSS or Playwright text selectors) and the flow falls back to
-label text. `{fmt}` expands to `print-book` or `ebook`. Override anything with a
-YAML file (`kdp publish selectors --dump` writes the defaults) and use
-`kdp publish probe` on a live KDP page to see which candidates match.
+Verified against a live KDP account on 2026-10-23 (Bookshelf and Paperback Details
+probe dumps); Content and Pricing entries marked `unverified` still follow the same
+naming scheme and must be checked with `kdp publish probe`. Amazon changes its DOM
+without notice, so every field has an ordered list of candidate selectors (CSS or
+Playwright text selectors) and the flow falls back to label text. `{fmt}` expands to
+`print-book` or `ebook`. Override anything with a YAML file (`kdp publish selectors
+--dump` writes the defaults).
 """
 
 from __future__ import annotations
@@ -16,46 +18,62 @@ import yaml
 
 FMT_TOKEN = {"ebook": "ebook", "paperback": "print-book", "hardcover": "print-book"}
 
+# Paths of the three title-setup tabs per format (seen on the live site)
+TITLE_SETUP_PATH = {"ebook": "title-setup/kindle", "paperback": "title-setup/paperback", "hardcover": "title-setup/hardcover"}
+
 DEFAULT_SELECTORS: dict = {
     "bookshelf_url": "https://kdp.amazon.com/bookshelf",
     "signin_markers": ["#ap_email", "#ap_password", "form[name='signIn']", "input[name='email'][type='email']"],
     "captcha_markers": ["#auth-captcha-image", "img[src*='captcha']", "#captchacharacters", "text=Enter the characters you see"],
-    "create_button": ["#create-new-title", "a:has-text('+ Create')", "a:has-text('Create')", "button:has-text('Create')"],
+    # Bookshelf: the yellow "+ Create new title or series" button is a plain anchor to /create
+    "create_button": ["a[href*='/create']:has-text('Create')", "a:has-text('Create new title')", "text=Create new title or series", "a:has-text('+ Create')", "button:has-text('Create')"],
+    # /create page: one entry per format (anchors into title-setup/<format>/new/details)
     "format_choice": {
-        "ebook": ["#ebook-create-title-button", "a:has-text('Create eBook')", "text=Kindle eBook"],
-        "paperback": ["#paperback-create-title-button", "a:has-text('Create paperback')", "text=Paperback"],
-        "hardcover": ["#hardcover-create-title-button", "a:has-text('Create hardcover')", "text=Hardcover"],
+        "ebook": ["a[href*='title-setup/kindle/new/details']", "a:has-text('Create eBook')", "text=Kindle eBook"],
+        "paperback": ["a[href*='title-setup/paperback/new/details']", "a:has-text('Create paperback')", "text=Paperback"],
+        "hardcover": ["a[href*='title-setup/hardcover/new/details']", "a:has-text('Create hardcover')", "text=Hardcover"],
     },
     "details": {
-        "language": ["#data-{fmt}-language-select", "select[name*='language']"],
-        "title": ["#data-{fmt}-title", "input[name*='title']:not([name*='subtitle'])"],
-        "subtitle": ["#data-{fmt}-subtitle", "input[name*='subtitle']"],
-        "author_first": ["#data-{fmt}-primary-author-first-name", "#data-{fmt}-contributors-0-first-name"],
-        "author_last": ["#data-{fmt}-primary-author-last-name", "#data-{fmt}-contributors-0-last-name"],
-        "description": ["#data-{fmt}-description", "textarea[name*='description']", "[id^='cke_'][id$='description'] iframe", "[contenteditable='true']"],
-        "rights_own": ["#non-public-domain", "input[value='non-public-domain']", "label:has-text('I own the copyright')"],
-        "adult_no": ["#data-{fmt}-is-adult-content-no", "input[name*='adult'][value='false']", "input[name*='adult'][value='no']"],
-        "adult_yes": ["#data-{fmt}-is-adult-content-yes", "input[name*='adult'][value='true']"],
-        "age_min": ["#data-{fmt}-min-age", "#data-{fmt}-reading-age-min", "select[name*='min']"],
-        "age_max": ["#data-{fmt}-max-age", "#data-{fmt}-reading-age-max", "select[name*='max']"],
-        "ai_yes": ["#data-{fmt}-ai-content-yes", "input[name*='ai'][value='true']", "input[name*='ai'][value='yes']"],
-        "ai_no": ["#data-{fmt}-ai-content-no", "input[name*='ai'][value='false']", "input[name*='ai'][value='no']"],
-        "ai_text": ["#data-{fmt}-ai-content-text", "select[name*='ai'][name*='text']"],
-        "ai_images": ["#data-{fmt}-ai-content-images", "select[name*='ai'][name*='image']"],
-        "ai_translation": ["#data-{fmt}-ai-content-translation", "select[name*='ai'][name*='translat']"],
-        "keyword": ["#data-{fmt}-keywords-{i}", "input[name*='keywords-{i}']", "input[name*='keyword'][name*='{i}']"],
-        "low_content": ["#data-{fmt}-is-low-content", "#data-{fmt}-low-content", "input[name*='low-content']", "input[name*='lowContent']"],
-        "save_continue": ["#save-and-continue-announce", "button:has-text('Save and Continue')", "input[value='Save and Continue']"],
+        "language": ["#data-{fmt}-language-native", "select[name='data[{fmt_u}][language]']", "select[name*='language']"],
+        "title": ["#data-{fmt}-title", "input[name='data[{fmt_u}][title]']"],
+        "subtitle": ["#data-{fmt}-subtitle", "input[name='data[{fmt_u}][subtitle]']"],
+        "edition": ["#data-{fmt}-edition-number", "input[name*='edition_number']"],
+        "author_first": ["#data-{fmt}-primary-author-first-name", "input[name*='primary_author][first_name']"],
+        "author_last": ["#data-{fmt}-primary-author-last-name", "input[name*='primary_author][last_name']"],
+        # description is a CKEditor instance; fill_rich() uses the CKEDITOR JS API first, these are fallbacks
+        "description": [".cke_editable[contenteditable='true']", "iframe.cke_wysiwyg_frame", "[contenteditable='true']", "textarea[name*='description']"],
+        "rights_own": ["#non-public-domain", "input[name*='is-public-domain'][value='false']", "label:has-text('I own the copyright')"],
+        # Keep name-based fallbacks specific: a bare name*='adult' or name*='ai' also matches unrelated
+        # fields (e.g. 'is-public-dom*ai*n'), which would silently change a legal declaration.
+        "adult_no": ["input[name*='is_adult_content'][value='false']", "#data-{fmt}-is-adult-content-no"],
+        "adult_yes": ["input[name*='is_adult_content'][value='true']", "#data-{fmt}-is-adult-content-yes"],
+        "age_min": ["#data-{fmt}-reading-interest-age-start-input-native", "select[name*='reading_interest_age][min']"],
+        "age_max": ["#data-{fmt}-reading-interest-age-end-input-native", "select[name*='reading_interest_age][max']"],
+        "primary_marketplace": ["select[name*='home_marketplace']"],
+        "categories_button": ["#categories-modal-button", "button:has-text('Choose categories')"],
+        "low_content": ["#data-view-is-lcb", "input[name*='is_lcb']", "#data-{fmt}-is-low-content"],
+        "large_print": ["#data-{fmt}-large-print", "input[name*='large_print']"],
+        "keyword": ["#data-{fmt}-keywords-{i}", "input[name='data[{fmt_u}][keywords][{i}]']"],
+        "save_draft": ["#save-announce", "button:has-text('Save as Draft')"],
+        "save_continue": ["#save-and-continue-announce", "button:has-text('Save and Continue')"],
     },
-    "content": {
+    # AI-generated content lives on the Content tab (not on Details); the flow fills it wherever it finds it.
+    "ai": {  # unverified ids; names must contain 'ai_content'/'ai-content'/'generative' - never a bare 'ai'
+        "ai_yes": ["#data-{fmt}-ai-content-yes", "input[name*='ai_content'][value='true']", "input[name*='ai-content'][value='true']", "input[name*='generative'][value='true']", "input[name*='ai_content'][value='yes']"],
+        "ai_no": ["#data-{fmt}-ai-content-no", "input[name*='ai_content'][value='false']", "input[name*='ai-content'][value='false']", "input[name*='generative'][value='false']", "input[name*='ai_content'][value='no']"],
+        "ai_text": ["#data-{fmt}-ai-content-text", "select[name*='ai_content'][name*='text']", "select[name*='ai-content'][name*='text']", "select[name*='generative'][name*='text']"],
+        "ai_images": ["#data-{fmt}-ai-content-images", "select[name*='ai_content'][name*='image']", "select[name*='ai-content'][name*='image']", "select[name*='generative'][name*='image']"],
+        "ai_translation": ["#data-{fmt}-ai-content-translation", "select[name*='ai_content'][name*='translat']", "select[name*='ai-content'][name*='translat']", "select[name*='generative'][name*='translat']"],
+    },
+    "content": {  # unverified: probe the Content tab and adjust
         "isbn_free": ["#free-print-isbn-btn-announce", "button:has-text('Assign me a free KDP ISBN')", "button:has-text('Get a free KDP ISBN')"],
         "isbn_confirm": ["#print-isbn-confirm-button-announce", "button:has-text('Assign ISBN')", "button:has-text('Confirm')"],
         "paper": {
-            "white_bw": ["#data-print-book-paper-type-black-and-white-white", "input[value='bw-white']", "label:has-text('white paper'):near(:text('Black & white'))"],
-            "cream_bw": ["#data-print-book-paper-type-black-and-white-cream", "input[value='bw-cream']", "label:has-text('cream paper')"],
-            "groundwood_bw": ["#data-print-book-paper-type-black-and-white-groundwood", "input[value='bw-groundwood']"],
-            "standard_color": ["#data-print-book-paper-type-standard-color-white", "input[value='standard-color']"],
-            "premium_color": ["#data-print-book-paper-type-premium-color-white", "input[value='premium-color']"],
+            "white_bw": ["#data-print-book-paper-type-black-and-white-white", "input[value='bw-white']", "input[name*='paper'][value*='white']:not([value*='color'])"],
+            "cream_bw": ["#data-print-book-paper-type-black-and-white-cream", "input[value='bw-cream']", "input[name*='paper'][value*='cream']"],
+            "groundwood_bw": ["#data-print-book-paper-type-black-and-white-groundwood", "input[value='bw-groundwood']", "input[name*='paper'][value*='groundwood']"],
+            "standard_color": ["#data-print-book-paper-type-standard-color-white", "input[value='standard-color']", "input[name*='paper'][value*='standard']"],
+            "premium_color": ["#data-print-book-paper-type-premium-color-white", "input[value='premium-color']", "input[name*='paper'][value*='premium']"],
         },
         "trim": ["#data-print-book-trim-size", "select[name*='trim']", "#trim-size-select"],
         "bleed_yes": ["#data-print-book-bleed-yes", "input[name*='bleed'][value='true']", "label:has-text('Bleed (PDF only)')"],
@@ -69,7 +87,7 @@ DEFAULT_SELECTORS: dict = {
         "previewer": ["#print-previewer-button-announce", "#ebook-previewer-button-announce", "button:has-text('Launch Previewer')"],
         "save_continue": ["#save-and-continue-announce", "button:has-text('Save and Continue')"],
     },
-    "pricing": {
+    "pricing": {  # unverified: probe the Pricing tab and adjust
         "all_territories": ["#data-print-book-pricing-rights-all-territories", "#data-ebook-pricing-rights-all-territories", "input[name*='territor'][value='all']", "label:has-text('All territories')"],
         "kdp_select": ["#data-ebook-kdp-select-enroll", "input[name*='kdp-select']", "input[name*='kdpSelect']"],
         "price_us": ["#data-pricing-print-us-price-input", "#data-pricing-ebook-us-price-input", "input[id*='us-price']", "input[name*='price'][name*='US']"],
@@ -101,10 +119,11 @@ def dump_default_yaml() -> str:
 
 def expand(candidates: list[str], fmt: str, **kw) -> list[str]:
     tok = FMT_TOKEN.get(fmt, "print-book")
+    tok_u = tok.replace("-", "_")  # form field names use data[print_book][...]
     out = []
     for c in candidates:
         try:
-            out.append(c.format(fmt=tok, **kw))
+            out.append(c.format(fmt=tok, fmt_u=tok_u, **kw))
         except (KeyError, IndexError):
             out.append(c)
     return out

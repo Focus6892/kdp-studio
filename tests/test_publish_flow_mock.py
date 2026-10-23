@@ -62,13 +62,15 @@ def test_assisted_flow_against_mock(tmp_path):
     # details page values travelled through the query string
     assert params["d.data-print-book-title"] == "Bold & Easy Flowers"
     assert params["d.data-print-book-primary-author-last-name"] == "Hartwell" and params["d.data-print-book-primary-author-first-name"] == "Mia"
-    assert params["d.data-print-book-language-select"] == "en"
-    assert params["d.non-public-domain"] == "own" and params["d.data-print-book-is-adult-content-no"] == "no"
-    assert params["d.data-print-book-ai-content-yes"] == "yes" and params["d.data-print-book-ai-content-images"] in ("entire-min", "some-min")
-    assert params["d.data-print-book-ai-content-text"] == "none"
+    assert params["d.data-print-book-language-native"] == "en"
+    assert params["d.non-public-domain"] == "false" and params["d.mock-adult-no"] == "false"
     assert params["d.data-print-book-keywords-6"] == "stress relief coloring"
-    assert "d.data-print-book-is-low-content" not in params  # coloring books are not low-content
-    assert "<h4>" in params["d.data-print-book-description"]
+    assert "d.data-view-is-lcb" not in params and "d.data-print-book-large-print" not in params  # coloring books: neither box
+    assert "<h4>" in params["d.description-hidden"] and "<h4>" in params["d.description-hidden"]  # filled through the CKEDITOR API
+    assert params["d.mock-home-marketplace"] == "Amazon.com"
+    # AI disclosure lives on the Content tab and was filled there
+    assert params["c.mock-ai-yes"] == "true" and params["c.mock-ai-images"] in ("entire-min", "some-min")
+    assert params["c.mock-ai-text"] == "none"
     # content page
     assert params["c.data-print-book-paper-type-black-and-white-white"] == "bw-white"
     assert params["c.data-print-book-trim-size"] == "8.5x11" and params["c.data-print-book-bleed-yes"] == "true" and params["c.data-print-book-cover-finish-matte"] == "matte"
@@ -93,8 +95,8 @@ def test_inventory_lists_form_controls(tmp_path):
     finally:
         session.close()
     ids = {e["id"] for sc in inv["scopes"] for e in sc["elements"] if e.get("id")}
-    assert {"data-print-book-title", "data-print-book-keywords-6", "save-and-continue-announce", "non-public-domain"} <= ids
-    sel = next(e for sc in inv["scopes"] for e in sc["elements"] if e.get("id") == "data-print-book-language-select")
+    assert {"data-print-book-title", "data-print-book-keywords-6", "save-and-continue-announce", "non-public-domain", "data-view-is-lcb"} <= ids
+    sel = next(e for sc in inv["scopes"] for e in sc["elements"] if e.get("id") == "data-print-book-language-native")
     assert "English" in sel["options"] and sel["tag"] == "select"
     md = inventory_markdown(inv)
     assert "data-print-book-title" in md and "| frame |" in md

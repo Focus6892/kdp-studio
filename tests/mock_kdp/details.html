@@ -1,6 +1,7 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><title>Mock KDP – Paperback Details</title>
 <script>
+// Field ids/names mirror the live KDP Paperback Details page (probe dump 2026-10-23).
 function collect(prefix) {
   const p = new URLSearchParams(location.search);
   document.querySelectorAll('input, select, textarea').forEach(el => {
@@ -9,38 +10,44 @@ function collect(prefix) {
     else if (el.type === 'file') { if (el.files && el.files.length) p.set(prefix + el.id, el.files[0].name); }
     else p.set(prefix + el.id, el.value);
   });
+  // the CKEditor-like description: mirror the editable div into the hidden field
+  p.set(prefix + 'description-hidden', document.getElementById('mock-description').innerHTML);
   return p.toString();
 }
+// Minimal CKEDITOR shim so fill_rich() takes the same path as on the live site.
+window.CKEDITOR = { instances: { 'data[print_book][description]': {
+  setData: function (h) { document.getElementById('mock-description').innerHTML = h; },
+  updateElement: function () { document.getElementById('description-hidden').value = document.getElementById('mock-description').innerHTML; }
+} } };
 </script></head>
 <body>
 <h1>Paperback Details (mock)</h1>
-<label>Language <select id="data-print-book-language-select"><option value="">Choose</option><option value="en">English</option><option value="es">Spanish</option></select></label><br>
-<label>Book Title <input id="data-print-book-title" type="text"></label><br>
-<label>Subtitle <input id="data-print-book-subtitle" type="text"></label><br>
-<label>Author first <input id="data-print-book-primary-author-first-name" type="text"></label>
-<label>Author last <input id="data-print-book-primary-author-last-name" type="text"></label><br>
-<label>Description <textarea id="data-print-book-description"></textarea></label><br>
+<label>Language <select id="data-print-book-language-native" name="data[print_book][language]"><option value="">Choose</option><option value="en">English</option><option value="es">Spanish</option></select></label><br>
+<label>Book Title <input id="data-print-book-title" name="data[print_book][title]" type="text"></label><br>
+<label>Subtitle <input id="data-print-book-subtitle" name="data[print_book][subtitle]" type="text"></label><br>
+<label>Edition <input id="data-print-book-edition-number" name="data[print_book][edition_number]" type="text"></label><br>
+<label>Author first <input id="data-print-book-primary-author-first-name" name="data[print_book][primary_author][first_name]" type="text"></label>
+<label>Author last <input id="data-print-book-primary-author-last-name" name="data[print_book][primary_author][last_name]" type="text"></label><br>
+<div>Description <div id="mock-description" class="cke_editable" contenteditable="true" style="border:1px solid #999;min-height:40px"></div>
+<input type="hidden" id="description-hidden" name="data[print_book][description]"></div>
 <fieldset><legend>Publishing rights</legend>
-  <label><input type="radio" name="rights" id="non-public-domain" value="own"> I own the copyright</label>
-  <label><input type="radio" name="rights" id="public-domain" value="pd"> Public domain</label>
+  <label><input type="radio" name="data-print-book-is-public-domain" id="non-public-domain" value="false"> I own the copyright and I hold necessary publishing rights.</label>
+  <label><input type="radio" name="data-print-book-is-public-domain" id="public-domain" value="true"> This is a public domain work</label>
 </fieldset>
 <fieldset><legend>Primary audience</legend>
-  <label><input type="radio" name="adult" id="data-print-book-is-adult-content-no" value="no"> No</label>
-  <label><input type="radio" name="adult" id="data-print-book-is-adult-content-yes" value="yes"> Yes</label>
-  <select id="data-print-book-min-age"><option value="">min</option><option value="3">3</option><option value="4">4</option><option value="8">8</option></select>
-  <select id="data-print-book-max-age"><option value="">max</option><option value="8">8</option><option value="12">12</option><option value="18">18</option></select>
+  <label><input type="radio" name="data[print_book][is_adult_content]-radio" id="mock-adult-yes" value="true"> Yes</label>
+  <label><input type="radio" name="data[print_book][is_adult_content]-radio" id="mock-adult-no" value="false"> No</label>
+  <select id="data-print-book-reading-interest-age-start-input-native" name="data[print_book][reading_interest_age][min]"><option value="">Select one</option><option value="baby">Baby</option><option value="1">1</option><option value="4">4</option><option value="8">8</option></select>
+  <select id="data-print-book-reading-interest-age-end-input-native" name="data[print_book][reading_interest_age][max]"><option value="">Select one</option><option value="8">8</option><option value="12">12</option><option value="18">18</option></select>
 </fieldset>
-<fieldset><legend>AI-generated content</legend>
-  <label><input type="radio" name="ai" id="data-print-book-ai-content-yes" value="yes"> Yes</label>
-  <label><input type="radio" name="ai" id="data-print-book-ai-content-no" value="no"> No</label><br>
-  Text <select id="data-print-book-ai-content-text"><option value="none">None</option><option value="some-min">Some sections, with minimal or no editing</option><option value="entire-min">Entire work, with minimal or no editing</option><option value="entire-ext">Entire work, with extensive editing</option></select>
-  Images <select id="data-print-book-ai-content-images"><option value="none">None</option><option value="some-min">One or a few, with minimal or no editing</option><option value="entire-min">Many or all, with minimal or no editing</option></select>
-  Translation <select id="data-print-book-ai-content-translation"><option value="none">None</option><option value="entire-min">Entire work, with minimal or no editing</option></select>
-</fieldset>
+<label>Primary marketplace <select id="mock-home-marketplace" name="data[print_book][home_marketplace]"><option>Amazon.com</option><option>Amazon.co.uk</option></select></label>
+<button id="categories-modal-button" type="button">Choose categories</button>
+<label><input type="checkbox" id="data-view-is-lcb" name="data[view][is_lcb]-check" value="true"> Low-content book (e.g. journals, notebooks, and planners)</label><br>
+<label><input type="checkbox" id="data-print-book-large-print" name="data[print_book][large_print]-check" value="true"> Large-print book (content is 16-point font size or greater)</label><br>
 <fieldset><legend>Keywords</legend>
-  <input id="data-print-book-keywords-0"><input id="data-print-book-keywords-1"><input id="data-print-book-keywords-2"><input id="data-print-book-keywords-3">
-  <input id="data-print-book-keywords-4"><input id="data-print-book-keywords-5"><input id="data-print-book-keywords-6">
+  <input id="data-print-book-keywords-0" name="data[print_book][keywords][0]"><input id="data-print-book-keywords-1" name="data[print_book][keywords][1]"><input id="data-print-book-keywords-2" name="data[print_book][keywords][2]"><input id="data-print-book-keywords-3" name="data[print_book][keywords][3]">
+  <input id="data-print-book-keywords-4" name="data[print_book][keywords][4]"><input id="data-print-book-keywords-5" name="data[print_book][keywords][5]"><input id="data-print-book-keywords-6" name="data[print_book][keywords][6]">
 </fieldset>
-<label><input type="checkbox" id="data-print-book-is-low-content" value="low"> Low-content book</label><br>
+<button id="save-announce" onclick="alert('draft saved')">Save as Draft</button>
 <button id="save-and-continue-announce" onclick="location.href='content.html?' + collect('d.')">Save and Continue</button>
 </body></html>

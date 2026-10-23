@@ -72,6 +72,7 @@ def test_checklist_contains_every_field():
 def test_selectors_expand_and_override(tmp_path):
     assert expand(["#data-{fmt}-title"], "paperback") == ["#data-print-book-title"]
     assert expand(["#data-{fmt}-keywords-{i}"], "ebook", i=3) == ["#data-ebook-keywords-3"]
+    assert expand(["input[name='data[{fmt_u}][keywords][{i}]']"], "paperback", i=2) == ["input[name='data[print_book][keywords][2]']"]
     override = tmp_path / "sel.yaml"
     override.write_text("details:\n  title: ['#my-title']\nbookshelf_url: https://example.test/shelf\n", encoding="utf-8")
     sel = load_selectors(override)

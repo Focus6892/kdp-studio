@@ -184,7 +184,27 @@ class BrowserSession:
             return False
 
     def fill_rich(self, candidates: list[str], html: str) -> bool:
-        """Description editors: plain textarea/input, contenteditable, or a CKEditor iframe."""
+        """Description editors: CKEditor (via its JS API, which also syncs the hidden form field),
+        then plain textarea/input, contenteditable, or a CKEditor iframe as fallbacks."""
+        try:
+            done = self.page.evaluate(
+                """(h) => {
+                    const ck = window.CKEDITOR;
+                    if (!ck || !ck.instances) return false;
+                    const names = Object.keys(ck.instances);
+                    if (!names.length) return false;
+                    const name = names.find(n => /descr/i.test(n)) || names[0];
+                    const inst = ck.instances[name];
+                    inst.setData(h);
+                    if (inst.updateElement) inst.updateElement();
+                    return true;
+                }""",
+                html,
+            )
+            if done:
+                return True
+        except Exception as exc:  # noqa: BLE001
+            log.info("CKEditor API not usable: %s", str(exc).splitlines()[0][:120])
         loc = self.find(candidates)
         if loc is None:
             return False
@@ -231,17 +251,25 @@ class BrowserSession:
         except Exception:  # noqa: BLE001
             return False
 
-    def select(self, candidates: list[str], *, value: str | None = None, label_contains: str | list[str] | None = None, exclude_contains: str | None = None) -> bool:
-        """Select by value, by the first label needle that matches (in order), or - with
-        `exclude_contains` - the first option whose label does not contain that word."""
+    def select(self, candidates: list[str], *, value: str | None = None, label_equals: str | None = None, label_contains: str | list[str] | None = None, exclude_contains: str | None = None) -> bool:
+        """Select by value, by exact label, by the first label needle that matches (in order),
+        or - with `exclude_contains` - the first option whose label does not contain that word."""
         loc = self.find(candidates)
         if loc is None:
             return False
         try:
             if value is not None:
-                loc.select_option(value=value)
-                return True
+                try:
+                    loc.select_option(value=value)
+                    return True
+                except Exception:  # noqa: BLE001 - value not present, fall through to labels
+                    pass
             options = loc.evaluate("el => Array.from(el.options).map(o => [o.value, o.textContent.trim()])")
+            if label_equals is not None:
+                for val, text in options:
+                    if text.lower() == label_equals.lower():
+                        loc.select_option(value=val)
+                        return True
             needles = [label_contains] if isinstance(label_contains, str) else list(label_contains or [])
             for needle in needles:
                 for val, text in options:

@@ -59,6 +59,7 @@ class Metadata(BaseModel):
     series: Series | None = None
     language: str = "English"
     low_content: bool = False
+    large_print: bool = False  # KDP's checkbox: body text set in 16-point type or larger (not about image size)
     sexually_explicit: bool = False
     edition: str | None = None
 
