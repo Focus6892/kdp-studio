@@ -532,30 +532,37 @@ def cmd_publish_probe(args) -> int:
         print("Sign in if asked, then open the KDP page to probe (Bookshelf, Details, Content or Pricing).")
         round_no = 0
         while True:
-            ans = ask("Press Enter to probe the current page, or type q to finish:").strip().lower()
+            try:
+                ans = ask("Press Enter to probe the current page, or type q to finish:").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                break
             if ans in ("q", "quit", "exit"):
                 break
             round_no += 1
-            inv = s.inventory()
-            total = sum(len(sc["elements"]) for sc in inv["scopes"])
-            print(f"\nPage: {inv.get('title')!r} — {inv.get('url')}\nFrames: {len(inv['frames'])}, form controls found: {total}")
-            for group in ("details", "content", "pricing"):
-                m = s.matches(sel[group], args.format)
-                hits = sum(1 for v in m.values() if v)
-                print(f"[{group}] {hits}/{len(m)} selector(s) match")
-                for fld, match in m.items():
-                    print(f"  {fld:26} {match or 'NO MATCH'}")
-            print("[page]")
-            for name in ("create_button", "signin_markers", "captcha_markers"):
-                print(f"  {name:26} {s._first_match(sel[name]) or 'no match'}")
-            stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-            js = out_dir / f"probe_{stamp}_{round_no}.json"
-            md = out_dir / f"probe_{stamp}_{round_no}.md"
-            write_json(js, inv)
-            md.write_text(inventory_markdown(inv), encoding="utf-8")
-            dumps += [js, md]
-            ids = [e["id"] for sc in inv["scopes"] for e in sc["elements"] if e.get("id")]
-            print(f"\nDump written: {md}\n  ({total} controls; ids seen: {', '.join(ids[:12])}{' ...' if len(ids) > 12 else ''})")
+            try:  # one failing page must never end the probe session
+                inv = s.inventory()
+                total = sum(len(sc["elements"]) for sc in inv["scopes"])
+                print(f"\nPage: {inv.get('title')!r} — {inv.get('url')}\nFrames: {len(inv['frames'])}, form controls found: {total}")
+                for group in ("details", "ai", "content", "pricing"):
+                    m = s.matches(sel[group], args.format)
+                    hits = sum(1 for v in m.values() if v)
+                    print(f"[{group}] {hits}/{len(m)} selector(s) match")
+                    for fld, match in m.items():
+                        print(f"  {fld:26} {match or 'NO MATCH'}")
+                print("[page]")
+                for name in ("create_button", "signin_markers", "captcha_markers"):
+                    print(f"  {name:26} {s._first_match(sel[name]) or 'no match'}")
+                stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+                js = out_dir / f"probe_{stamp}_{round_no}.json"
+                md = out_dir / f"probe_{stamp}_{round_no}.md"
+                write_json(js, inv)
+                md.write_text(inventory_markdown(inv), encoding="utf-8")
+                dumps += [js, md]
+                ids = [e["id"] for sc in inv["scopes"] for e in sc["elements"] if e.get("id")]
+                print(f"\nDump written: {md.resolve()}\n  ({total} controls; ids seen: {', '.join(ids[:12])}{' ...' if len(ids) > 12 else ''})")
+            except Exception as exc:  # noqa: BLE001
+                print(f"\nProbe of this page failed ({type(exc).__name__}: {str(exc).splitlines()[0][:200]}). Wait for the page to finish loading and press Enter to retry.")
+                continue
             print("Navigate to the next tab (Details -> Content -> Pricing) and press Enter again, or q to finish.")
     if dumps:
         print(f"\n{len(dumps) // 2} page dump(s) in {out_dir}. Share the .md files to get the selector map corrected.")
