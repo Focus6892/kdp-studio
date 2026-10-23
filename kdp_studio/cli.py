@@ -409,10 +409,19 @@ def cmd_publish_checklist(args) -> int:
 
 
 def cmd_publish_quota(args) -> int:
-    from .publish.quota import quota_markdown, quota_status
+    from .publish.quota import quota_markdown, quota_status, record_external, record_kdp_limit
 
     store = _publish_store(args)
     try:
+        if args.add_created:
+            record_external(store, args.add_created, created=1, note=args.note)
+            print(f"Recorded 1 {args.add_created} title created on KDP outside the tool.")
+        if args.add_submitted:
+            record_external(store, args.add_submitted, submitted=1, note=args.note)
+            print(f"Recorded 1 {args.add_submitted} title submitted on KDP outside the tool.")
+        if args.limit_reached:
+            record_kdp_limit(store, args.limit_reached, note=args.note)
+            print(f"Recorded KDP's 'Title creation limit reached' for {args.limit_reached}: runs that create a title are blocked until the window resets.")
         print(quota_markdown(quota_status(store)))
     finally:
         store.close()
@@ -452,7 +461,8 @@ def _run_publish_cli(book_path: Path, fmt: str, args) -> int:
         runs_dir=Path(args.runs),
         require_preflight=not args.no_preflight,
         headless_local=args.headless_local,
-        start_url=args.start_url,
+        start_url=args.start_url or args.resume_url,
+        resume=bool(args.resume_url),
     )
     print(f"Assisted publish: {book_path} ({fmt}) | browser profile: {opts.profile_dir}")
     print("Rules: the browser stays visible, you sign in yourself, every KDP step waits for your review, the tool never clicks Publish.")
@@ -465,7 +475,7 @@ def _run_publish_cli(book_path: Path, fmt: str, args) -> int:
     print(f"Result: {result.status} | filled {len(result.filled)} field(s), {len(result.unfilled)} to enter by hand")
     for fld, val in result.unfilled:
         print(f"  - {fld}: {val}")
-    if result.status in ("error", "aborted", "stopped_before_publish"):
+    if result.status in ("error", "aborted", "blocked", "stopped_before_publish"):
         for note in result.notes[-3:]:
             print(f"  ! {note}")
         print("  (details in flow.json; re-run with -v for the full traceback)")
@@ -867,6 +877,7 @@ def build_parser() -> argparse.ArgumentParser:
         pp.add_argument("--db", default=PUB_DB)
         pp.add_argument("--runs", default=PUB_RUNS, help="folder for checklists, screenshots and flow logs")
         pp.add_argument("--no-preflight", action="store_true", help="skip the preflight re-check of the build files")
+        pp.add_argument("--resume-url", help="continue an existing KDP draft instead of creating one: its Details tab URL (https://kdp.amazon.com/en_US/title-setup/<format>/<ID>/details); uses no creation quota")
         pp.add_argument("--start-url", help="testing only: open this URL (a local mock page) instead of the KDP bookshelf")
         pp.add_argument("--headless-local", action="store_true", help="testing only: headless browser, accepted for file:// or localhost start URLs")
 
@@ -878,6 +889,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_publish_checklist)
     p = psub.add_parser("quota", help="this week's KDP creation/submission counts per format")
     p.add_argument("--db", default=PUB_DB)
+    p.add_argument("--add-created", choices=["ebook", "paperback", "hardcover"], help="record a title you created on KDP by hand this week (drafts count)")
+    p.add_argument("--add-submitted", choices=["ebook", "paperback", "hardcover"], help="record a title you submitted on KDP by hand this week")
+    p.add_argument("--limit-reached", choices=["ebook", "paperback", "hardcover"], help="record that KDP showed 'Title creation limit reached' for this format")
+    p.add_argument("--note", help="free text stored with the record")
     p.set_defaults(func=cmd_publish_quota)
     p = psub.add_parser("queue", help="submission queue")
     qsub = p.add_subparsers(dest="queue_cmd", required=True)

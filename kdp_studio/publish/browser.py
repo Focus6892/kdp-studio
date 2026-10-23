@@ -147,6 +147,20 @@ class BrowserSession:
                     continue
         return None
 
+    def find_visible(self, candidates: list):
+        """Like find(), but only an element that is actually shown counts (dialogs kept hidden in the DOM do not)."""
+        for cand in candidates:
+            for scope in self._scopes():
+                try:
+                    loc = self._locator(scope, cand)
+                    n = loc.count()
+                    for i in range(min(n, 5)):
+                        if loc.nth(i).is_visible():
+                            return loc.nth(i)
+                except Exception:  # noqa: BLE001
+                    continue
+        return None
+
     def comboboxes(self) -> list[tuple[object, str]]:
         """Every ARIA combobox on the page with its accessible name (React-style custom dropdowns)."""
         out: list[tuple[object, str]] = []

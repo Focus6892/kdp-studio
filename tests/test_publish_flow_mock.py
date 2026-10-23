@@ -130,3 +130,36 @@ def test_flow_stops_on_quit(tmp_path):
     assert result.status == "aborted" and result.events == ["aborted"]
     assert store.get_title(book.id, "paperback") is None
     store.close()
+
+
+def test_flow_stops_when_kdp_reports_the_creation_limit(tmp_path):
+    from kdp_studio.publish.quota import quota_status
+
+    book = load_book(EXAMPLE_DIR / "book.yaml")
+    start = (MOCK / "details.html").as_uri() + "?limit=1"
+    session = _session(tmp_path, start)
+    store = PublishStore(tmp_path / "publish.sqlite")
+    try:
+        result = run_flow(book, "paperback", session, load_selectors(None), ScriptedApprover([""]), store, start_url=start)
+    finally:
+        session.close()
+    assert result.status == "blocked" and result.events == ["kdp_limit"]
+    assert any("creation limit" in n for n in result.notes)
+    assert store.get_title(book.id, "paperback") is None  # nothing was created on KDP
+    assert not quota_status(store)["paperback"].can_start  # and the local quota now knows
+    store.close()
+
+
+def test_resume_counts_no_creation(tmp_path):
+    book = load_book(EXAMPLE_DIR / "book.yaml")
+    start = (MOCK / "details.html").as_uri()
+    session = _session(tmp_path, start)
+    store = PublishStore(tmp_path / "publish.sqlite")
+    try:
+        result = run_flow(book, "paperback", session, load_selectors(None), ScriptedApprover(["", "", "d"]), store, start_url=start, resume=True)
+    finally:
+        session.close()
+    assert result.status == "draft" and result.events == ["draft_saved"]
+    assert any("Resumed an existing KDP draft" in n for n in result.notes)
+    store.close()
+

@@ -94,3 +94,27 @@ Trên Bookshelf, tựa "The Lantern Lane Letters" ở trạng thái Draft; có t
 - `q` ở bất kỳ cổng nào dừng luồng (trạng thái `aborted`). Nếu đã qua Details, tựa vẫn nằm trên Bookshelf dạng draft.
 - KDP đếm 2 tựa mới mỗi định dạng mỗi tuần; bản nháp "aaaa…" tạo tay hôm nay không có trong sổ của tool nhưng có thể được KDP tính.
 - Chạy thật sau này chỉ khác ở cổng cuối: bạn bấm Publish rồi gõ `p`.
+
+## Khi KDP báo "Title creation limit reached"
+
+KDP đếm **mọi tựa bạn tạo** trong tuần, kể cả bản nháp chưa nộp: 2 tựa mỗi định dạng, reset Chủ nhật 00:00 UTC (07:00 giờ Việt Nam).
+Bản nháp thử tạo tay không nằm trong sổ của tool, nên hãy ghi lại để `publish run` không mở trình duyệt vô ích:
+
+```powershell
+python -m kdp_studio publish quota --add-created paperback --note "ban nhap thu aaaa"
+python -m kdp_studio publish quota --limit-reached paperback      # khi đã thấy hộp thoại của KDP
+```
+
+Tool tự nhận ra hộp thoại này sau "Save and Continue": kết thúc với trạng thái `blocked`, không ghi `created`, và khoá quota của định dạng đó đến khi reset.
+
+## Chạy tiếp trên một bản nháp đã có (không tốn lượt tạo)
+
+Giới hạn chỉ áp cho việc **tạo** tựa. Một bản nháp đã có thể được điền lại từ đầu bằng `--resume-url` với URL tab Details của nó
+(mở bản nháp từ Bookshelf, URL có dạng `title-setup/paperback/<ID>/details`):
+
+```powershell
+python -m kdp_studio publish run examples/lantern-lane/book.yaml --format paperback --resume-url "https://kdp.amazon.com/en_US/title-setup/paperback/JNZ7EMV4MER/details"
+```
+
+Tool nhận ra đang ở tab Details, ghi đè toàn bộ field bằng dữ liệu trong `book.yaml` (tiêu đề, tác giả, mô tả, từ khoá, bỏ tick Low-content...),
+rồi đi tiếp Content và Rights & Pricing như bình thường. Không ghi sự kiện `created`; khi bạn gõ `d` tool ghi `draft_saved`.

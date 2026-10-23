@@ -31,6 +31,7 @@ class QuotaStatus:
     created: int
     submitted: int
     limit: int = WEEKLY_LIMIT
+    kdp_blocked: bool = False  # KDP itself showed 'Title creation limit reached' in this window
 
     @property
     def remaining_created(self) -> int:
@@ -54,15 +55,33 @@ class QuotaStatus:
             "limit": self.limit,
             "remaining_created": self.remaining_created,
             "remaining_submitted": self.remaining_submitted,
+            "kdp_blocked": self.kdp_blocked,
         }
 
 
 def quota_status(store, now: dt.datetime | None = None) -> dict[str, QuotaStatus]:
     start, end = week_window(now)
-    return {
-        fmt: QuotaStatus(fmt, start, end, store.count_events("created", fmt, start, end), store.count_events("submitted", fmt, start, end))
-        for fmt in FORMATS
-    }
+    out: dict[str, QuotaStatus] = {}
+    for fmt in FORMATS:
+        created = store.count_events("created", fmt, start, end)
+        submitted = store.count_events("submitted", fmt, start, end)
+        blocked = store.count_events("kdp_limit", fmt, start, end) > 0  # KDP's own dialog was seen: pinned at the limit
+        if blocked:
+            created = max(created, WEEKLY_LIMIT)
+        out[fmt] = QuotaStatus(fmt, start, end, created, submitted, kdp_blocked=blocked)
+    return out
+
+
+def record_external(store, fmt: str, *, created: int = 0, submitted: int = 0, note: str | None = None, now: dt.datetime | None = None) -> None:
+    """Titles created or submitted on KDP outside this tool (by hand, or by a run that died) still use the quota."""
+    for _ in range(created):
+        store.add_event("external", fmt, "created", notes=note or "created on KDP outside kdp-studio", ts=now)
+    for _ in range(submitted):
+        store.add_event("external", fmt, "submitted", notes=note or "submitted on KDP outside kdp-studio", ts=now)
+
+
+def record_kdp_limit(store, fmt: str, *, note: str | None = None, now: dt.datetime | None = None) -> None:
+    store.add_event("external", fmt, "kdp_limit", notes=note or "KDP dialog: Title creation limit reached", ts=now)
 
 
 def quota_markdown(statuses: dict[str, QuotaStatus]) -> str:
@@ -72,4 +91,8 @@ def quota_markdown(statuses: dict[str, QuotaStatus]) -> str:
     lines.append("|---|---|---|---|")
     for fmt, s in statuses.items():
         lines.append(f"| {fmt} | {s.created} | {s.submitted} | {s.remaining_created} / {s.remaining_submitted} |")
+    for fmt, s in statuses.items():
+        if s.kdp_blocked:
+            lines.append(f"\n{fmt}: KDP reported 'Title creation limit reached' this window - counted as {s.limit}/{s.limit} created until {s.window_end:%Y-%m-%d %H:%M} UTC.")
+    lines.append("\nKDP counts every title you create (drafts included). Record ones made by hand with `kdp publish quota --add-created <format>`.")
     return "\n".join(lines) + "\n"

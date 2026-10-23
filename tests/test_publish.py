@@ -113,3 +113,33 @@ def test_flow_records_errors_instead_of_crashing(tmp_path):
     assert store.get_title(book.id, "paperback") is None  # nothing was created on KDP
     store.close()
 
+
+def test_quota_counts_hand_made_titles_and_kdp_limit(tmp_path):
+    from kdp_studio.publish.quota import quota_markdown, record_external, record_kdp_limit
+
+    store = PublishStore(tmp_path / "p.sqlite")
+    now = dt.datetime(2026, 10, 23, 12, tzinfo=UTC)
+    record_external(store, "paperback", created=1, note="test draft made by hand", now=now)
+    assert quota_status(store, now)["paperback"].created == 1
+    record_kdp_limit(store, "paperback", now=now)
+    q = quota_status(store, now)["paperback"]
+    assert q.kdp_blocked and q.created == 2 and not q.can_start
+    assert quota_status(store, now + dt.timedelta(days=7))["paperback"].can_start  # next window
+    assert "Title creation limit reached" in quota_markdown(quota_status(store, now))
+    store.close()
+
+
+def test_resume_skips_the_creation_check(tmp_path):
+    from kdp_studio.publish.pipeline import check_preconditions
+    from kdp_studio.publish.quota import record_kdp_limit
+
+    book = load_book(ROOT / "examples" / "bold-easy-flowers" / "book.yaml")
+    store = PublishStore(tmp_path / "p.sqlite")
+    now = dt.datetime(2026, 10, 23, 12, tzinfo=UTC)
+    record_kdp_limit(store, "paperback", now=now)
+    blocked, _ = check_preconditions(book, "paperback", store, require_preflight=False, now=now)
+    assert any(x.code == "publish.quota" for x in blocked.errors)
+    resumed, _ = check_preconditions(book, "paperback", store, require_preflight=False, now=now, resume=True)
+    assert not any(x.code == "publish.quota" for x in resumed.errors)
+    store.close()
+

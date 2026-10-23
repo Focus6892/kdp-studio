@@ -49,5 +49,17 @@ window.CKEDITOR = { instances: { 'data[print_book][description]': {
   <input id="data-print-book-keywords-4" name="data[print_book][keywords][4]"><input id="data-print-book-keywords-5" name="data[print_book][keywords][5]"><input id="data-print-book-keywords-6" name="data[print_book][keywords][6]">
 </fieldset>
 <button id="save-announce" onclick="alert('draft saved')">Save as Draft</button>
-<button id="save-and-continue-announce" onclick="location.href='content.html?' + collect('d.')">Save and Continue</button>
+<button id="save-and-continue-announce" onclick="saveContinue()">Save and Continue</button>
+<div id="limit-modal" role="dialog" style="display:none;border:2px solid #333;padding:12px;background:#fff">
+  <h3>Title creation limit reached</h3>
+  <p>You have reached your weekly title creation limit for this format. Your limit resets on Sunday at 12:00 AM UTC.</p>
+  <button type="button" onclick="document.getElementById('limit-modal').style.display='none'">OK</button>
+</div>
+<script>
+// KDP shows this dialog instead of moving on when the weekly creation limit (drafts included) is used up
+function saveContinue() {
+  if (new URLSearchParams(location.search).get('limit')) { document.getElementById('limit-modal').style.display = 'block'; return; }
+  location.href = 'content.html?' + collect('d.');
+}
+</script>
 </body></html>

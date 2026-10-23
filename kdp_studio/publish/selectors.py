@@ -24,6 +24,8 @@ TITLE_SETUP_PATH = {"ebook": "title-setup/kindle", "paperback": "title-setup/pap
 DEFAULT_SELECTORS: dict = {
     "bookshelf_url": "https://kdp.amazon.com/bookshelf",
     "signin_markers": ["#ap_email", "#ap_password", "form[name='signIn']", "input[name='email'][type='email']"],
+    # KDP's modal when the weekly creation limit is used up (seen live 2026-10-23 after 'Save and Continue' on Details)
+    "limit_markers": ["text=Title creation limit reached", "text=weekly title creation limit"],
     "captcha_markers": ["#auth-captcha-image", "img[src*='captcha']", "#captchacharacters", "text=Enter the characters you see"],
     # Bookshelf: the yellow "+ Create new title or series" button is a plain anchor to /create
     "create_button": ["a[href*='/create']:has-text('Create')", "a:has-text('Create new title')", "text=Create new title or series", "a:has-text('+ Create')", "button:has-text('Create')"],

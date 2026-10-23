@@ -135,7 +135,7 @@ KDP không có API, và điều khoản cấm bên thứ ba dùng tài khoản h
 - Tool không gõ mật khẩu, không nhập OTP, không đụng CAPTCHA: gặp trang đăng nhập hay thử thách là dừng chờ bạn.
 - Mỗi tab KDP (Details → Content → Pricing) được điền từ `book.yaml` rồi **dừng** để bạn xem; chỉ khi bạn nhấn Enter tool mới bấm "Save and Continue". Previewer bạn tự mở và tự duyệt.
 - Tool **không bao giờ bấm Publish**. Bạn bấm, rồi gõ `p` để ghi nhận.
-- Trước khi mở trình duyệt: kiểm tra file build, preflight PASS, quota tuần (2 tựa/định dạng, reset Chủ nhật 00:00 UTC) và tựa chưa từng nộp.
+- Trước khi mở trình duyệt: kiểm tra file build, preflight PASS, quota tuần (2 tựa/định dạng, reset Chủ nhật 00:00 UTC) và tựa chưa từng nộp. KDP đếm cả bản nháp (xác nhận trên tài khoản thật 2026-10-23: hộp thoại "Title creation limit reached" hiện ngay khi Save and Continue ở Details); tool nhận ra hộp thoại đó (trạng thái `blocked`), tựa tạo tay ghi bằng `publish quota --add-created`, và `--resume-url` cho phép điền tiếp một bản nháp đã có mà không tốn lượt tạo.
 - Mỗi lần chạy lưu `publishing/runs/<ts>-<id>-<fmt>/` gồm checklist, ảnh chụp từng bước và `flow.json` (đã điền gì, còn gì phải nhập tay).
 
 ```bash

@@ -40,9 +40,10 @@ class PublishOptions:
     start_url: str | None = None
     channels: tuple[str | None, ...] = ("msedge", "chrome", None)
     slow_mo_ms: int = 60
+    resume: bool = False  # start_url is an existing draft's Details tab: nothing new is created
 
 
-def check_preconditions(book: Book, fmt: str, store: PublishStore, require_preflight: bool = True, now: dt.datetime | None = None) -> tuple[FindingList, QuotaStatus]:
+def check_preconditions(book: Book, fmt: str, store: PublishStore, require_preflight: bool = True, now: dt.datetime | None = None, resume: bool = False) -> tuple[FindingList, QuotaStatus]:
     f = FindingList()
     if fmt not in book.formats:
         f.warning("publish.format", f"'{fmt}' is not listed in book.formats {book.formats}.", "formats")
@@ -66,8 +67,11 @@ def check_preconditions(book: Book, fmt: str, store: PublishStore, require_prefl
         for x in report.findings.warnings:
             f.warning(x.code, x.message, x.where)
     q = quota_status(store, now)[fmt]
-    if not q.can_start:
-        f.error("publish.quota", f"KDP weekly limit reached for {fmt}: {q.created}/{q.limit} created, {q.submitted}/{q.limit} submitted in the window ending {q.window_end:%Y-%m-%d %H:%M} UTC.", "quota")
+    need_create = not resume
+    if (need_create and q.remaining_created == 0) or q.remaining_submitted == 0:
+        hint = " (KDP showed the limit dialog)" if q.kdp_blocked else ""
+        more = "; continuing an existing draft with --resume-url needs no creation." if need_create and q.remaining_submitted > 0 else "."
+        f.error("publish.quota", f"KDP weekly limit reached for {fmt}: {q.created}/{q.limit} created, {q.submitted}/{q.limit} submitted in the window ending {q.window_end:%Y-%m-%d %H:%M} UTC{hint}{more}", "quota")
     existing = store.get_title(book.id, fmt)
     if existing and existing["status"] in ("in_review", "live"):
         f.error("publish.already", f"{book.id} ({fmt}) is already {existing['status']}" + (f" as {existing['asin']}" if existing.get("asin") else "") + ".", "publish")
@@ -78,7 +82,7 @@ def run_publish(book_path: Path, opts: PublishOptions, approver: Approver, now: 
     book = load_book(book_path)
     store = PublishStore(opts.store_path)
     try:
-        findings, quota = check_preconditions(book, opts.fmt, store, opts.require_preflight, now)
+        findings, quota = check_preconditions(book, opts.fmt, store, opts.require_preflight, now, resume=opts.resume)
         stamp = (now or dt.datetime.now(dt.timezone.utc)).strftime("%Y%m%d-%H%M%S")
         run_dir = opts.runs_dir / f"{stamp}-{book.id}-{opts.fmt}"
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -90,7 +94,7 @@ def run_publish(book_path: Path, opts: PublishOptions, approver: Approver, now: 
         selectors = load_selectors(opts.selectors_path)
         headless = bool(opts.headless_local)
         with BrowserSession(opts.profile_dir, channels=opts.channels, headless=headless, allow_headless_local=opts.headless_local, start_url=opts.start_url, slow_mo_ms=opts.slow_mo_ms, screenshot_dir=run_dir / "screenshots") as session:
-            result = run_flow(book, opts.fmt, session, selectors, approver, store, start_url=opts.start_url, book_path=str(book_path))
+            result = run_flow(book, opts.fmt, session, selectors, approver, store, start_url=opts.start_url, book_path=str(book_path), resume=opts.resume)
         write_json(run_dir / "flow.json", {**result.as_dict(), "book_id": book.id, "format": opts.fmt, "browser": session.channel_used, "preconditions": [x.as_dict() for x in findings]})
         return result, findings, run_dir
     finally:

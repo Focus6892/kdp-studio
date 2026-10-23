@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -24,7 +25,11 @@ STOP_WORDS = {"q", "quit", "stop", "abort", "exit"}
 
 
 class FlowStopped(Exception):
-    pass
+    """Raised to end the flow early; `status` becomes the run status (aborted, or blocked when KDP refused)."""
+
+    def __init__(self, message: str = "", status: str = "aborted"):
+        super().__init__(message)
+        self.status = status
 
 
 class Approver(Protocol):
@@ -65,9 +70,10 @@ class FlowResult:
 
 
 class Flow:
-    def __init__(self, book: Book, fmt: str, session: BrowserSession, selectors: dict, approver: Approver, store: PublishStore | None, book_path: str | None = None):
+    def __init__(self, book: Book, fmt: str, session: BrowserSession, selectors: dict, approver: Approver, store: PublishStore | None, book_path: str | None = None, resume: bool = False):
         self.book, self.fmt, self.s, self.sel, self.approver, self.store = book, fmt, session, selectors, approver, store
         self.book_path = book_path
+        self.resume = resume  # continuing an existing KDP draft: no title is created, so no 'created' event
         self.res = FlowResult()
 
     # ---------------------------------------------------------------- helpers
@@ -100,6 +106,24 @@ class Flow:
         if p:
             self.res.screenshots.append(str(p))
 
+    def _await(self, markers: list, timeout_s: float) -> bool:
+        """Wait for the next tab while watching for KDP's 'Title creation limit reached' dialog."""
+        deadline = time.time() + timeout_s
+        while True:
+            if self.s.find_visible(self.sel["limit_markers"]) is not None:
+                self._kdp_limit()
+            if self.s.find(markers) is not None:
+                return True
+            if time.time() >= deadline:
+                return False
+            time.sleep(0.5)
+
+    def _kdp_limit(self) -> None:
+        msg = ("KDP refused to create the title: weekly title creation limit reached for this format "
+               "(drafts count; resets Sunday 00:00 UTC). Nothing was created; the local quota now treats the format as used up.")
+        self._event("kdp_limit", msg)
+        raise FlowStopped(msg, status="blocked")
+
     def _wait_access(self) -> None:
         """Hand over to the human for sign-in or CAPTCHA pages; the tool never fills those."""
         for _ in range(20):
@@ -122,7 +146,7 @@ class Flow:
             return
         if not self.s.click(self.sel["format_choice"][self.fmt]):
             self._gate(f"Could not find the '{self.fmt}' choice. Pick it yourself, then press Enter:")
-        if not self.s.wait_for(self._c("details", "title"), timeout_s=60):
+        if not self._await(self._c("details", "title"), timeout_s=60):
             self._gate("The Details page did not appear. Open the new title's Details tab yourself, then press Enter:")
 
     def fill_ai_disclosure(self) -> bool:
@@ -335,12 +359,15 @@ class Flow:
             self._gate(self._summary("Details") + "\nReview the Details tab in the browser. [Enter] = click 'Save and Continue', q = stop:")
             if not self.s.click(self._c("details", "save_continue")):
                 self._gate("Click 'Save and Continue' yourself, then press Enter:")
-            self._event("created", "details saved")
+            if not self._await(self._c("content", "page_markers"), timeout_s=60):
+                self._gate("The Content tab did not appear. Open it yourself, then press Enter:")
+                self._await(self._c("content", "page_markers"), timeout_s=2)  # a late limit dialog still stops the run
+            if self.resume:
+                self.res.notes.append("Resumed an existing KDP draft: no title creation counted toward the weekly limit.")
+            else:
+                self._event("created", "details saved")
             if self.store is not None:
                 self.store.upsert_title(self.book.id, self.fmt, "draft", title=self.book.metadata.full_title)
-
-            if not self.s.wait_for(self._c("content", "page_markers"), timeout_s=60):
-                self._gate("The Content tab did not appear. Open it yourself, then press Enter:")
             self.fill_content()
             self._shot("content")
             self._gate(self._summary("Content") + "\nWait for KDP to finish processing both uploads, open 'Launch Previewer' and approve it yourself. Then [Enter] = click 'Save and Continue', q = stop:")
@@ -370,10 +397,11 @@ class Flow:
             else:
                 res.status = "stopped_before_publish"
         except FlowStopped as stop:
-            res.status = "aborted"
+            res.status = stop.status
             if str(stop):
                 res.notes.append(f"Stopped: {stop}")
-            self._event("aborted", str(stop) or None)
+            if stop.status == "aborted":
+                self._event("aborted", str(stop) or None)
         except Exception as exc:  # noqa: BLE001 - keep the run log (flow.json) even when KDP or the browser misbehaves
             log.exception("assisted flow failed")
             res.status = "error"
@@ -395,5 +423,5 @@ class Flow:
         return "\n".join(lines)
 
 
-def run_flow(book: Book, fmt: str, session: BrowserSession, selectors: dict, approver: Approver, store: PublishStore | None = None, start_url: str | None = None, book_path: str | None = None) -> FlowResult:
-    return Flow(book, fmt, session, selectors, approver, store, book_path).run(start_url)
+def run_flow(book: Book, fmt: str, session: BrowserSession, selectors: dict, approver: Approver, store: PublishStore | None = None, start_url: str | None = None, book_path: str | None = None, resume: bool = False) -> FlowResult:
+    return Flow(book, fmt, session, selectors, approver, store, book_path, resume=resume).run(start_url)
