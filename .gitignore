@@ -14,3 +14,7 @@ Thumbs.db
 examples/**/metadata/
 *.bak
 /watch/
+/publishing/
+/monitor/
+.kdp-profile/
+browser-profile/

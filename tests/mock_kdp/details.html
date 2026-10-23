@@ -1,0 +1,46 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Mock KDP – Paperback Details</title>
+<script>
+function collect(prefix) {
+  const p = new URLSearchParams(location.search);
+  document.querySelectorAll('input, select, textarea').forEach(el => {
+    if (!el.id) return;
+    if (el.type === 'radio' || el.type === 'checkbox') { if (el.checked) p.set(prefix + el.id, el.value || 'on'); }
+    else if (el.type === 'file') { if (el.files && el.files.length) p.set(prefix + el.id, el.files[0].name); }
+    else p.set(prefix + el.id, el.value);
+  });
+  return p.toString();
+}
+</script></head>
+<body>
+<h1>Paperback Details (mock)</h1>
+<label>Language <select id="data-print-book-language-select"><option value="">Choose</option><option value="en">English</option><option value="es">Spanish</option></select></label><br>
+<label>Book Title <input id="data-print-book-title" type="text"></label><br>
+<label>Subtitle <input id="data-print-book-subtitle" type="text"></label><br>
+<label>Author first <input id="data-print-book-primary-author-first-name" type="text"></label>
+<label>Author last <input id="data-print-book-primary-author-last-name" type="text"></label><br>
+<label>Description <textarea id="data-print-book-description"></textarea></label><br>
+<fieldset><legend>Publishing rights</legend>
+  <label><input type="radio" name="rights" id="non-public-domain" value="own"> I own the copyright</label>
+  <label><input type="radio" name="rights" id="public-domain" value="pd"> Public domain</label>
+</fieldset>
+<fieldset><legend>Primary audience</legend>
+  <label><input type="radio" name="adult" id="data-print-book-is-adult-content-no" value="no"> No</label>
+  <label><input type="radio" name="adult" id="data-print-book-is-adult-content-yes" value="yes"> Yes</label>
+  <select id="data-print-book-min-age"><option value="">min</option><option value="3">3</option><option value="4">4</option><option value="8">8</option></select>
+  <select id="data-print-book-max-age"><option value="">max</option><option value="8">8</option><option value="12">12</option><option value="18">18</option></select>
+</fieldset>
+<fieldset><legend>AI-generated content</legend>
+  <label><input type="radio" name="ai" id="data-print-book-ai-content-yes" value="yes"> Yes</label>
+  <label><input type="radio" name="ai" id="data-print-book-ai-content-no" value="no"> No</label><br>
+  Text <select id="data-print-book-ai-content-text"><option value="none">None</option><option value="some-min">Some sections, with minimal or no editing</option><option value="entire-min">Entire work, with minimal or no editing</option><option value="entire-ext">Entire work, with extensive editing</option></select>
+  Images <select id="data-print-book-ai-content-images"><option value="none">None</option><option value="some-min">One or a few, with minimal or no editing</option><option value="entire-min">Many or all, with minimal or no editing</option></select>
+  Translation <select id="data-print-book-ai-content-translation"><option value="none">None</option><option value="entire-min">Entire work, with minimal or no editing</option></select>
+</fieldset>
+<fieldset><legend>Keywords</legend>
+  <input id="data-print-book-keywords-0"><input id="data-print-book-keywords-1"><input id="data-print-book-keywords-2"><input id="data-print-book-keywords-3">
+  <input id="data-print-book-keywords-4"><input id="data-print-book-keywords-5"><input id="data-print-book-keywords-6">
+</fieldset>
+<label><input type="checkbox" id="data-print-book-is-low-content" value="low"> Low-content book</label><br>
+<button id="save-and-continue-announce" onclick="location.href='content.html?' + collect('d.')">Save and Continue</button>
+</body></html>

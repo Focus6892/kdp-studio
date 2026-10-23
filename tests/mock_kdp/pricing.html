@@ -1,0 +1,19 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Mock KDP – Paperback Pricing</title>
+<script>
+window.__published = false;
+function publish() { window.__published = true; document.getElementById('published-flag').textContent = 'PUBLISHED'; }
+</script></head>
+<body>
+<h1>Paperback Rights & Pricing (mock)</h1>
+<fieldset><legend>Territories</legend>
+  <label><input type="radio" name="territories" id="data-print-book-pricing-rights-all-territories" value="all"> All territories (worldwide rights)</label>
+  <label><input type="radio" name="territories" id="data-print-book-pricing-rights-individual" value="individual"> Individual territories</label>
+</fieldset>
+<fieldset><legend>Pricing</legend>
+  <label>Amazon.com list price $ <input id="data-pricing-print-us-price-input" type="text"></label>
+  <label><input type="checkbox" id="data-pricing-print-expanded-distribution" value="yes"> Expanded Distribution</label>
+</fieldset>
+<button id="save-and-publish-announce" onclick="publish()">Publish Your Paperback Book</button>
+<span id="published-flag"></span>
+</body></html>

@@ -2,9 +2,9 @@
 
 Bộ công cụ sản xuất sách cho Amazon KDP, bắt đầu từ sách tô màu: một file `book.yaml` làm nguồn sự thật duy nhất → ruột sách PDF, bìa wrap PDF (CMYK, 300 DPI), bìa eBook JPEG và báo cáo preflight kiểm tra theo đúng thông số KDP.
 
-Trạng thái: **Giai đoạn 0** (interior-forge cho sách tô màu + cover-forge + preflight), **Giai đoạn 1** (niche-scout + metadata-writer) và **Giai đoạn 2** (pipeline truyện chữ Markdown → EPUB + PDF in, draft bằng Claude, competitor-watch) đã chạy được. Nghiên cứu thị trường, chính sách và kiến trúc đầy đủ nằm trong [docs/KDP-Toolkit-Research.md](docs/KDP-Toolkit-Research.md).
+Trạng thái: **Giai đoạn 0** (interior-forge cho sách tô màu + cover-forge + preflight), **Giai đoạn 1** (niche-scout + metadata-writer), **Giai đoạn 2** (pipeline truyện chữ Markdown → EPUB + PDF in, draft bằng Claude, competitor-watch) và **Giai đoạn 3** (assisted-publisher bán tự động có người giám sát, hàng đợi theo quota tuần, monitor sau xuất bản) đã chạy được. Nghiên cứu thị trường, chính sách và kiến trúc đầy đủ nằm trong [docs/KDP-Toolkit-Research.md](docs/KDP-Toolkit-Research.md).
 
-Luồng làm việc trọn vẹn cho một cuốn: `kdp niche run` (chọn ngách, nhận concept cards) → `kdp watch insights` (đọc review đối thủ thành differentiation brief) → viết `brief.yaml` → `kdp metadata generate` + `kdp metadata apply` → (truyện: `kdp story draft` hoặc tự viết Markdown) → `kdp build` (ruột, EPUB, bìa, preflight) → upload thủ công lên KDP → `kdp watch snapshot` theo dõi sau xuất bản.
+Luồng làm việc trọn vẹn cho một cuốn: `kdp niche run` (chọn ngách, nhận concept cards) → `kdp watch insights` (đọc review đối thủ thành differentiation brief) → viết `brief.yaml` → `kdp metadata generate` + `kdp metadata apply` → (truyện: `kdp story draft` hoặc tự viết Markdown) → `kdp build` (ruột, EPUB, bìa, preflight) → `kdp publish run` (điền form KDP trong trình duyệt của bạn, bạn bấm Publish) → `kdp publish mark ... --status live --asin` → `kdp monitor report` + `kdp watch snapshot`.
 
 ## Cài đặt
 
@@ -12,7 +12,7 @@ Yêu cầu Python 3.11+. Không cần GPU hay API key để chạy thử (provid
 
 ```bash
 python -m venv .venv && . .venv/bin/activate      # Linux/macOS
-python -m pip install -e ".[dev,ai]"
+python -m pip install -e ".[dev,ai,publish]"      # publish = Playwright cho kdp publish (dùng Edge/Chrome sẵn có)
 python -m pytest
 ```
 
@@ -125,6 +125,41 @@ python -m kdp_studio watch covers covers/                 # palette (offline) + 
 
 Dữ liệu nằm trong `watch/` (watchlist.yaml, watch.sqlite, báo cáo). Cảnh báo mặc định: giảm giá ≥ 15%, BSR cải thiện ≥ 30% hoặc xấu đi ≥ 50% trong 7 ngày, tốc độ nhận rating ≥ 3/ngày. Module không scrape review Amazon; bạn tự export (copy từ trang sản phẩm hoặc extension) rồi đưa file text/JSON vào.
 
+## Đưa sách lên KDP — `kdp publish` (bán tự động, có người giám sát)
+
+KDP không có API, và điều khoản cấm bên thứ ba dùng tài khoản hay thao túng dịch vụ, nên module này cố tình **không** phải bot tự động. Những quy tắc được mã hóa cứng trong code:
+
+- Trình duyệt luôn hiển thị (headless chỉ được chấp nhận với trang mock cục bộ khi chạy test); dùng Edge hoặc Chrome đã có trên máy với một profile riêng (`%LOCALAPPDATA%/kdp-studio/browser-profile`, không bao giờ commit).
+- Tool không gõ mật khẩu, không nhập OTP, không đụng CAPTCHA: gặp trang đăng nhập hay thử thách là dừng chờ bạn.
+- Mỗi tab KDP (Details → Content → Pricing) được điền từ `book.yaml` rồi **dừng** để bạn xem; chỉ khi bạn nhấn Enter tool mới bấm "Save and Continue". Previewer bạn tự mở và tự duyệt.
+- Tool **không bao giờ bấm Publish**. Bạn bấm, rồi gõ `p` để ghi nhận.
+- Trước khi mở trình duyệt: kiểm tra file build, preflight PASS, quota tuần (2 tựa/định dạng, reset Chủ nhật 00:00 UTC) và tựa chưa từng nộp.
+- Mỗi lần chạy lưu `publishing/runs/<ts>-<id>-<fmt>/` gồm checklist, ảnh chụp từng bước và `flow.json` (đã điền gì, còn gì phải nhập tay).
+
+```bash
+python -m kdp_studio publish checklist examples/bold-easy-flowers/book.yaml --format paperback   # tờ nhập tay đầy đủ, kể cả khi không dùng trình duyệt
+python -m kdp_studio publish quota                                                               # còn bao nhiêu lượt tạo/nộp tuần này
+python -m kdp_studio publish queue add examples/bold-easy-flowers/book.yaml --format paperback --priority 1
+python -m kdp_studio publish next                                                                # chạy tựa kế tiếp còn quota
+python -m kdp_studio publish run examples/bold-easy-flowers/book.yaml --format paperback         # chạy trực tiếp một cuốn
+python -m kdp_studio publish mark examples/bold-easy-flowers/book.yaml --format paperback --status live --asin B0XXXXXXXX
+python -m kdp_studio publish probe                                                               # mở KDP, xem selector nào còn khớp khi Amazon đổi giao diện
+python -m kdp_studio publish selectors --out kdp_selectors.yaml                                  # ghi selector mặc định ra để chỉnh, dùng với --selectors
+```
+
+Selector của KDP được viết theo mẫu id `data-print-book-*` / `data-ebook-*` và có fallback theo nhãn, nhưng Amazon đổi DOM không báo trước: hãy chạy `probe` lần đầu và chỉnh file YAML nếu cần. Field nào không điền được sẽ được liệt kê để bạn nhập tay; categories luôn chọn tay trong hộp thoại của KDP. Luồng này được test trên một bản mock của ba trang KDP (`tests/mock_kdp/`) chứ chưa chạy trên tài khoản thật.
+
+## Sau xuất bản — `kdp monitor`
+
+```bash
+python -m kdp_studio monitor check                                          # trạng thái từng tựa so với mốc KDP (3 ngày duyệt, 72h sửa title)
+python -m kdp_studio monitor ads --csv ads-export.csv --book examples/bold-easy-flowers/book.yaml   # ACOS so với break-even = royalty / giá bìa
+python -m kdp_studio monitor sales --file kdp-royalties.csv --since 2026-10-01                     # báo cáo royalty KDP (CSV; XLSX cần openpyxl)
+python -m kdp_studio monitor report --ads ads-export.csv --sales kdp-royalties.csv                 # gộp: tựa, quota, ASIN của mình (từ competitor-watch), ads, doanh thu
+```
+
+Khi `publish mark --status live --asin` được gọi, ASIN được thêm vào watchlist với `ours: true`, nên `kdp watch snapshot` theo dõi luôn sách của bạn và `monitor report` hiển thị BSR/giá/rating cùng cảnh báo.
+
 ## book.yaml
 
 Xem [examples/bold-easy-flowers/book.yaml](examples/bold-easy-flowers/book.yaml) (tô màu) và [examples/lantern-lane/book.yaml](examples/lantern-lane/book.yaml) (truyện) có chú thích đầy đủ. Các khối chính:
@@ -134,7 +169,7 @@ Xem [examples/bold-easy-flowers/book.yaml](examples/bold-easy-flowers/book.yaml)
 - `interior` (type `coloring`) — `theme`, `audience`, số `images`, in một mặt (`single_sided`), front/back matter, `source.provider` (`placeholder` | `folder` | `openai`), `cleanup`, `dedupe`, `qa`, `prompts_with_claude`.
 - `interior` (type `story`) — `manuscript_dir`, `chapters_glob`, `body_font`, `font_size_pt`, `leading`, `margins`, `chapter_start_recto`, `running_heads`, `chapter_label`, front/back matter, `pad_to_min_pages`, `min_words`, `epub`, `kindle_previewer`.
 - `cover` — `art.provider` (`placeholder` | `file` | `openai`), `palette`, font, `back_blurb`, `back_bullets`, `spine_text`, `barcode_box`.
-- `pricing` — `list_price` trên amazon.com.
+- `pricing` — `list_price` trên amazon.com, `ebook_list_price`, `expanded_distribution` (paperback), `kdp_select` (eBook).
 - `provenance` — ai/cái gì tạo text, ảnh ruột, ảnh bìa → tool tự suy ra câu trả lời cho mục **AI-Generated Content** của KDP.
 
 ## Luật KDP đã mã hóa
@@ -175,7 +210,8 @@ KDP gỡ sách có nội dung "excessively reused, recycled, or repeated within 
 - Chuyển RGB → CMYK bằng Pillow (không ICC profile); màu in có thể lệch nhẹ so với màn hình.
 - Upscale bằng LANCZOS + re-threshold; chưa tích hợp Real-ESRGAN.
 - Ước lượng DPI trong preflight giả định ảnh trải hết chiều rộng trang.
-- Chưa có module upload; theo nghiên cứu, chỉ nên làm bán tự động có người bấm Publish.
+- `kdp publish run` mới được kiểm chứng trên mock KDP; selector thật có thể cần chỉnh qua `publish probe`. Tool chủ ý không tự bấm Publish và không có chế độ chạy không người.
+- `monitor ads`/`monitor sales` đọc file export bạn tải về; không có API cho Ads/Reports của KDP.
 - Nguồn `apify` và `creators` được viết theo tài liệu công khai nhưng chưa chạy với credential thật trong repo này; nguồn `csv` và `fixture` đã test. Chưa có Keepa và Google Trends.
 - Danh sách categories là gợi ý thường gặp; luôn xác nhận lại trong màn hình chọn category của KDP.
 
@@ -184,7 +220,8 @@ KDP gỡ sách có nội dung "excessively reused, recycled, or repeated within 
 1. **Giai đoạn 0 (xong)**: schema, interior-forge tô màu, cover-forge, preflight. Upload thủ công 2 cuốn để Amazon xác nhận file chuẩn.
 2. **Giai đoạn 1 (xong)**: `niche-scout` (fixture / CSV / Apify / Creators API, chấm điểm, xu hướng, concept cards) + `metadata-writer` (brief → ứng viên → validator → rubric → apply).
 3. **Giai đoạn 2 (xong)**: pipeline truyện chữ (Markdown → EPUB 3 + PDF in bằng Python thuần, Kindle Previewer tùy chọn, draft bằng Claude) + `competitor-watch` (snapshot ASIN, báo cáo xu hướng và cảnh báo, khai thác review, phân tích bìa).
-4. **Giai đoạn 3**: `assisted-publisher` (Playwright, human-in-the-loop, hàng đợi theo quota tuần) + theo dõi sau xuất bản + dashboard.
+4. **Giai đoạn 3 (xong)**: `assisted-publisher` (Playwright trên Edge/Chrome của bạn, human-in-the-loop, hàng đợi theo quota tuần, checklist, probe selector) + `monitor` (trạng thái tựa, ASIN của mình qua competitor-watch, Amazon Ads CSV, royalty KDP).
+5. **Tiếp theo**: chạy thử trên tài khoản KDP thật và chỉnh selector; dashboard web gộp các báo cáo; Keepa/Google Trends cho niche-scout; Real-ESRGAN và ICC CMYK cho sách tô màu.
 
 ## Cấu trúc
 
@@ -204,8 +241,11 @@ kdp_studio/
   metadata/          brief, categories, generate (Claude/template + repair), score (rubric), apply (ruamel), report
   story/             manuscript (Markdown), epub (builder + validator), print_pdf (Platypus), draft (Claude), kindle_previewer, pipeline
   watch/             models (watchlist), store (SQLite), sources (fixture/csv/creators/apify), report, insights, covers, pipeline
-  cli.py             validate | build | preflight | price | cover-size | niche … | metadata … | story … | watch …
+  publish/           quota (tuần KDP), store (events/titles/queue), checklist, selectors, browser (Playwright có rào chắn), flow (3 bước + cổng duyệt), pipeline
+  monitor/           status (mốc KDP), ads (CSV Amazon Ads), sales (royalty KDP), report
+  cli.py             validate | build | preflight | price | cover-size | niche … | metadata … | story … | watch … | publish … | monitor …
 examples/            bold-easy-flowers (tô màu), lantern-lane (truyện, 6 chương), watchlist.yaml, reviews-sample.txt
+tests/mock_kdp/      ba trang KDP giả lập (details, content, pricing) để test luồng publish không cần tài khoản
 library/             thư viện hash chống trùng xuyên sách
 docs/                báo cáo nghiên cứu KDP & kiến trúc bộ công cụ
 tests/               unit + end-to-end (build thật 10 trang rồi preflight)

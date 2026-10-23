@@ -260,6 +260,8 @@ class Pricing(BaseModel):
     marketplace: Literal["amazon.com"] = "amazon.com"
     list_price: float = Field(gt=0)
     ebook_list_price: float | None = Field(default=None, gt=0)
+    expanded_distribution: bool = False  # paperback only; 40% royalty before printing cost
+    kdp_select: bool = False  # eBook only; 90-day Kindle exclusivity for Kindle Unlimited
 
 
 class Book(BaseModel):

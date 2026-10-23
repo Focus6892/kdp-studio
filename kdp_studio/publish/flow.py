@@ -1,0 +1,261 @@
+"""The assisted title-setup flow: Details -> Content -> Pricing, with a human gate at each step.
+
+The flow fills what it can, lists what it could not, and stops before every
+irreversible action. It never clicks Publish.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import logging
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Protocol
+
+from ..schema import Book
+from .browser import BrowserSession
+from .checklist import artifacts_for, split_author
+from .selectors import expand
+from .store import PublishStore
+
+log = logging.getLogger(__name__)
+
+STOP_WORDS = {"q", "quit", "stop", "abort", "exit"}
+
+
+class FlowStopped(Exception):
+    pass
+
+
+class Approver(Protocol):
+    def ask(self, prompt: str) -> str: ...
+
+
+class ConsoleApprover:
+    def ask(self, prompt: str) -> str:
+        print()
+        return input(prompt + " ").strip()
+
+
+class ScriptedApprover:
+    """For tests: canned answers, prompts recorded."""
+
+    def __init__(self, answers: list[str]):
+        self.answers = list(answers)
+        self.prompts: list[str] = []
+
+    def ask(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return self.answers.pop(0) if self.answers else ""
+
+
+@dataclass
+class FlowResult:
+    status: str = "aborted"  # submitted | draft | stopped_before_publish | aborted
+    filled: list[str] = field(default_factory=list)
+    unfilled: list[tuple[str, str]] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    screenshots: list[str] = field(default_factory=list)
+    events: list[str] = field(default_factory=list)
+    started: str = field(default_factory=lambda: dt.datetime.now(dt.timezone.utc).isoformat())
+    finished: str | None = None
+
+    def as_dict(self) -> dict:
+        return {"status": self.status, "filled": self.filled, "unfilled": self.unfilled, "notes": self.notes, "screenshots": self.screenshots, "events": self.events, "started": self.started, "finished": self.finished}
+
+
+class Flow:
+    def __init__(self, book: Book, fmt: str, session: BrowserSession, selectors: dict, approver: Approver, store: PublishStore | None, book_path: str | None = None):
+        self.book, self.fmt, self.s, self.sel, self.approver, self.store = book, fmt, session, selectors, approver, store
+        self.book_path = book_path
+        self.res = FlowResult()
+
+    # ---------------------------------------------------------------- helpers
+    def _c(self, group: str, field: str, **kw) -> list[str]:
+        return expand(self.sel[group][field], self.fmt, **kw)
+
+    def _record(self, ok: bool, field: str, value: str) -> None:
+        (self.res.filled if ok else self.res.unfilled).append(field if ok else (field, value))
+
+    def _gate(self, prompt: str) -> str:
+        ans = self.approver.ask(prompt).strip().lower()
+        if ans in STOP_WORDS:
+            raise FlowStopped()
+        return ans
+
+    def _event(self, event: str, notes: str | None = None) -> None:
+        self.res.events.append(event)
+        if self.store is not None:
+            self.store.add_event(self.book.id, self.fmt, event, book_path=self.book_path, notes=notes)
+
+    def _shot(self, name: str) -> None:
+        p = self.s.screenshot(name)
+        if p:
+            self.res.screenshots.append(str(p))
+
+    def _wait_access(self) -> None:
+        """Hand over to the human for sign-in or CAPTCHA pages; the tool never fills those."""
+        for _ in range(20):
+            if self.s.is_captcha(self.sel["captcha_markers"]):
+                self._gate("A CAPTCHA/challenge is showing. Solve it yourself in the browser window, then press Enter (q to stop):")
+                continue
+            if self.s.is_signin(self.sel["signin_markers"]):
+                self._gate("Amazon is asking you to sign in. Sign in (and complete any OTP) in the browser window, then press Enter (q to stop):")
+                continue
+            return
+        raise FlowStopped()
+
+    # ---------------------------------------------------------------- steps
+    def create_title(self) -> None:
+        if self.s.find(self._c("details", "title")) is not None:
+            return  # already on a details page
+        if not self.s.click(self.sel["create_button"]):
+            self._gate("Could not find the Create button. Click '+ Create' on your Bookshelf yourself, then press Enter:")
+        if self.s.wait_for(self._c("details", "title"), timeout_s=5):
+            return
+        if not self.s.click(self.sel["format_choice"][self.fmt]):
+            self._gate(f"Could not find the '{self.fmt}' choice. Pick it yourself, then press Enter:")
+        if not self.s.wait_for(self._c("details", "title"), timeout_s=60):
+            self._gate("The Details page did not appear. Open the new title's Details tab yourself, then press Enter:")
+
+    def fill_details(self) -> None:
+        md = self.book.metadata
+        self._record(self.s.select(self._c("details", "language"), label_contains=md.language), "language", md.language)
+        self._record(self.s.fill(self._c("details", "title"), md.title), "title", md.title)
+        if md.subtitle:
+            self._record(self.s.fill(self._c("details", "subtitle"), md.subtitle), "subtitle", md.subtitle)
+        first, last = split_author(md.author)
+        if first:
+            self._record(self.s.fill(self._c("details", "author_first"), first), "author_first", first)
+        self._record(self.s.fill(self._c("details", "author_last"), last), "author_last", last)
+        self._record(self.s.fill_rich(self._c("details", "description"), md.description_html.strip()), "description", "(html)")
+        self._record(self.s.check(self._c("details", "rights_own")), "publishing_rights", "own copyright")
+        self._record(self.s.check(self._c("details", "adult_yes" if md.sexually_explicit else "adult_no")), "sexually_explicit", "yes" if md.sexually_explicit else "no")
+        if md.reading_age:
+            self._record(self.s.select(self._c("details", "age_min"), value=str(md.reading_age.min)) or self.s.select(self._c("details", "age_min"), label_contains=str(md.reading_age.min)), "reading_age_min", str(md.reading_age.min))
+            self._record(self.s.select(self._c("details", "age_max"), value=str(md.reading_age.max)) or self.s.select(self._c("details", "age_max"), label_contains=str(md.reading_age.max)), "reading_age_max", str(md.reading_age.max))
+        disclosure = self.book.ai_disclosure()
+        used_ai = disclosure["Did you use AI tools in creating texts, images and/or translations?"] == "Yes"
+        self._record(self.s.check(self._c("details", "ai_yes" if used_ai else "ai_no")), "ai_content", "yes" if used_ai else "no")
+        if used_ai:
+            for key, fld in (("Text", "ai_text"), ("Images", "ai_images"), ("Translations", "ai_translation")):
+                if disclosure[key].startswith("AI-generated"):
+                    # KDP words the scope options differently per category ("Entire work" / "Many or all" / "Some sections" /
+                    # "One or a few"); pick the broadest declared option, never "None", and leave the editing level to the human.
+                    ok = self.s.select(self._c("details", fld), label_contains=["entire", "many or all", "all", "some", "one or a few"], exclude_contains="none")
+                    self._record(ok, f"ai_{key.lower()}", "AI-generated (confirm scope and editing level yourself)")
+                    self.res.notes.append(f"AI {key}: declared as AI-generated; confirm the scope and editing level that match your workflow.")
+                else:
+                    self.s.select(self._c("details", fld), label_contains="none")
+        for i, kw in enumerate(md.keywords[:7]):
+            self._record(self.s.fill(self._c("details", "keyword", i=i), kw), f"keyword_{i + 1}", kw)
+        if md.low_content:
+            self._record(self.s.check(self._c("details", "low_content")), "low_content", "yes")
+        else:
+            self.s.uncheck(self._c("details", "low_content"))
+        self.res.notes.append("Categories must be picked in KDP's category dialog: " + " | ".join(md.categories))
+
+    def fill_content(self) -> None:
+        art = artifacts_for(self.book, self.fmt)
+        if self.fmt != "ebook":
+            p = self.book.print_
+            if p.isbn == "kdp_free":
+                if self.s.click(self._c("content", "isbn_free")):
+                    self.s.click(self._c("content", "isbn_confirm"))
+                    self._record(True, "isbn", "free KDP ISBN")
+                else:
+                    self._record(False, "isbn", "free KDP ISBN")
+            else:
+                self.res.notes.append(f"ISBN option '{p.isbn}' must be entered by hand.")
+            self._record(self.s.check(expand(self.sel["content"]["paper"][p.paper], self.fmt)), "ink_paper", p.paper)
+            self._record(self.s.select(self._c("content", "trim"), label_contains=p.trim.replace("x", " x ")), "trim", p.trim)
+            self._record(self.s.check(self._c("content", "bleed_yes" if p.bleed else "bleed_no")), "bleed", "yes" if p.bleed else "no")
+            self._record(self.s.check(self._c("content", "finish_matte" if p.cover_finish == "matte" else "finish_glossy")), "cover_finish", p.cover_finish)
+        if art["manuscript"]:
+            self._record(self.s.set_files(self._c("content", "manuscript_input"), art["manuscript"]), "manuscript_upload", art["manuscript"].name)
+        else:
+            self._record(False, "manuscript_upload", "missing build artifact")
+        if art["cover"]:
+            self.s.click(self._c("content", "cover_own"))
+            self._record(self.s.set_files(self._c("content", "cover_input"), art["cover"]), "cover_upload", art["cover"].name)
+        else:
+            self._record(False, "cover_upload", "missing build artifact")
+
+    def fill_pricing(self) -> None:
+        pr = self.book.pricing
+        self._record(self.s.check(self._c("pricing", "all_territories")), "territories", "all")
+        if self.fmt == "ebook":
+            price = pr.ebook_list_price or pr.list_price
+            if pr.kdp_select:
+                self._record(self.s.check(self._c("pricing", "kdp_select")), "kdp_select", "enroll")
+        else:
+            price = pr.list_price
+            if pr.expanded_distribution:
+                self._record(self.s.check(self._c("pricing", "expanded_distribution")), "expanded_distribution", "yes")
+        self._record(self.s.fill(self._c("pricing", "price_us"), f"{price:.2f}"), "list_price_us", f"{price:.2f}")
+
+    # ---------------------------------------------------------------- run
+    def run(self, start_url: str | None = None) -> FlowResult:
+        res = self.res
+        try:
+            self.s.goto(start_url or self.sel["bookshelf_url"])
+            self._wait_access()
+            self.create_title()
+            self._wait_access()
+
+            self.fill_details()
+            self._shot("details")
+            self._gate(self._summary("Details") + "\nReview the Details tab in the browser. [Enter] = click 'Save and Continue', q = stop:")
+            if not self.s.click(self._c("details", "save_continue")):
+                self._gate("Click 'Save and Continue' yourself, then press Enter:")
+            self._event("created", "details saved")
+            if self.store is not None:
+                self.store.upsert_title(self.book.id, self.fmt, "draft", title=self.book.metadata.full_title)
+
+            if not self.s.wait_for(self._c("content", "manuscript_input") + self._c("content", "isbn_free"), timeout_s=60):
+                self._gate("The Content tab did not appear. Open it yourself, then press Enter:")
+            self.fill_content()
+            self._shot("content")
+            self._gate(self._summary("Content") + "\nWait for KDP to finish processing both uploads, open 'Launch Previewer' and approve it yourself. Then [Enter] = click 'Save and Continue', q = stop:")
+            if not self.s.click(self._c("content", "save_continue")):
+                self._gate("Click 'Save and Continue' yourself, then press Enter:")
+
+            if not self.s.wait_for(self._c("pricing", "price_us"), timeout_s=60):
+                self._gate("The Pricing tab did not appear. Open it yourself, then press Enter:")
+            self.fill_pricing()
+            self._shot("pricing")
+            for _ in range(3):
+                ans = self._gate(
+                    self._summary("Pricing")
+                    + "\nThis tool never clicks Publish. Review everything; if it is right, click 'Publish' yourself in the browser.\n"
+                    "Then type: p = I clicked Publish, d = I saved it as a draft, q = stop:"
+                )
+                if ans in ("p", "published", "publish"):
+                    self._event("submitted", "human clicked Publish")
+                    if self.store is not None:
+                        self.store.upsert_title(self.book.id, self.fmt, "in_review", title=self.book.metadata.full_title)
+                    res.status = "submitted"
+                    break
+                if ans in ("d", "draft"):
+                    self._event("draft_saved", "human saved as draft")
+                    res.status = "draft"
+                    break
+            else:
+                res.status = "stopped_before_publish"
+        except FlowStopped:
+            res.status = "aborted"
+            self._event("aborted")
+        res.finished = dt.datetime.now(dt.timezone.utc).isoformat()
+        return res
+
+    def _summary(self, step: str) -> str:
+        lines = [f"--- {step}: filled {len(self.res.filled)} field(s)"]
+        if self.res.unfilled:
+            lines.append("NOT filled (enter by hand): " + "; ".join(f"{f} = {v}" for f, v in self.res.unfilled))
+        if self.res.notes:
+            lines.extend(self.res.notes[-3:])
+        return "\n".join(lines)
+
+
+def run_flow(book: Book, fmt: str, session: BrowserSession, selectors: dict, approver: Approver, store: PublishStore | None = None, start_url: str | None = None, book_path: str | None = None) -> FlowResult:
+    return Flow(book, fmt, session, selectors, approver, store, book_path).run(start_url)

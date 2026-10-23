@@ -381,6 +381,244 @@ def cmd_watch_covers(args) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------- publish commands
+def _publish_store(args):
+    from .publish.store import PublishStore
+
+    return PublishStore(Path(args.db))
+
+
+def cmd_publish_checklist(args) -> int:
+    from .publish.checklist import build_checklist
+    from .publish.quota import quota_status
+
+    book = load_book(args.book)
+    store = _publish_store(args)
+    try:
+        quota = quota_status(store)[args.format]
+    finally:
+        store.close()
+    text = build_checklist(book, args.format, quota)
+    out = Path(args.out) if args.out else book.build_dir / f"publish_checklist_{args.format}.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+    print(text)
+    print(f"Saved: {out}")
+    return 0
+
+
+def cmd_publish_quota(args) -> int:
+    from .publish.quota import quota_markdown, quota_status
+
+    store = _publish_store(args)
+    try:
+        print(quota_markdown(quota_status(store)))
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_publish_queue(args) -> int:
+    store = _publish_store(args)
+    try:
+        if args.queue_cmd == "add":
+            book = load_book(args.book)
+            qid = store.queue_add(str(Path(args.book).resolve()), args.format, priority=args.priority, book_id=book.id)
+            print(f"Queued #{qid}: {book.id} ({args.format}), priority {args.priority}")
+        elif args.queue_cmd == "remove":
+            print("Removed" if store.queue_remove(args.id) else "Not found")
+        else:
+            items = store.queue_list(None if args.all else "queued")
+            if not items:
+                print("Queue is empty")
+            for it in items:
+                print(f"#{it['id']:<4} {it['status']:<8} p{it['priority']} {it['fmt']:<9} {it['book_id'] or '':<28} {it['book_path']}")
+    finally:
+        store.close()
+    return 0
+
+
+def _run_publish_cli(book_path: Path, fmt: str, args) -> int:
+    from .publish.flow import ConsoleApprover
+    from .publish.pipeline import PublishOptions, run_publish
+
+    defaults = PublishOptions()
+    opts = PublishOptions(
+        fmt=fmt,
+        profile_dir=Path(args.profile) if args.profile else defaults.profile_dir,
+        selectors_path=Path(args.selectors) if args.selectors else None,
+        store_path=Path(args.db),
+        runs_dir=Path(args.runs),
+        require_preflight=not args.no_preflight,
+        headless_local=args.headless_local,
+        start_url=args.start_url,
+    )
+    print(f"Assisted publish: {book_path} ({fmt}) | browser profile: {opts.profile_dir}")
+    print("Rules: the browser stays visible, you sign in yourself, every KDP step waits for your review, the tool never clicks Publish.")
+    result, findings, run_dir = run_publish(book_path, opts, ConsoleApprover())
+    _print_findings(findings)
+    print(f"Run folder: {run_dir} (checklist.md, screenshots/, flow.json)")
+    if result is None:
+        print("Preconditions failed; the browser was not opened.")
+        return 1
+    print(f"Result: {result.status} | filled {len(result.filled)} field(s), {len(result.unfilled)} to enter by hand")
+    for fld, val in result.unfilled:
+        print(f"  - {fld}: {val}")
+    return 0 if result.status in ("submitted", "draft") else 1
+
+
+def cmd_publish_run(args) -> int:
+    return _run_publish_cli(Path(args.book), args.format, args)
+
+
+def cmd_publish_next(args) -> int:
+    from .publish.quota import quota_status
+
+    store = _publish_store(args)
+    try:
+        allowed = {f for f, s in quota_status(store).items() if s.can_start}
+        if args.format:
+            allowed &= {args.format}
+        item = store.queue_next(allowed)
+        if item is None:
+            print("Nothing runnable in the queue (empty, or the weekly quota is exhausted for the queued formats).")
+            return 1
+        store.queue_update(item["id"], "running")
+    finally:
+        store.close()
+    rc = _run_publish_cli(Path(item["book_path"]), item["fmt"], args)
+    store = _publish_store(args)
+    try:
+        store.queue_update(item["id"], "done" if rc == 0 else "failed")
+    finally:
+        store.close()
+    return rc
+
+
+def cmd_publish_mark(args) -> int:
+    from .monitor.status import mark_title
+
+    book = load_book(args.book)
+    store = _publish_store(args)
+    try:
+        row = mark_title(store, book.id, args.format, args.status, asin=args.asin, title=book.metadata.full_title, watchlist_path=Path(args.watchlist) if args.watchlist else None, book_path=str(Path(args.book).resolve()))
+    finally:
+        store.close()
+    print(f"{book.id} ({args.format}) -> {row['status']}" + (f", ASIN {row['asin']}" if row.get("asin") else ""))
+    if args.status == "live" and args.asin and args.watchlist:
+        print(f"Added {args.asin} to {args.watchlist} as one of yours (run `kdp watch snapshot` to start tracking).")
+    return 0
+
+
+def cmd_publish_probe(args) -> int:
+    from .publish.browser import BrowserSession
+    from .publish.flow import ConsoleApprover
+    from .publish.pipeline import default_profile_dir
+    from .publish.selectors import load_selectors
+
+    sel = load_selectors(Path(args.selectors) if args.selectors else None)
+    with BrowserSession(Path(args.profile) if args.profile else default_profile_dir(), start_url=args.url) as s:
+        s.goto(args.url or sel["bookshelf_url"])
+        ConsoleApprover().ask("Navigate to the KDP page you want to probe (Details, Content or Pricing), then press Enter:")
+        for group in ("details", "content", "pricing"):
+            print(f"\n[{group}]")
+            for fld, match in s.matches(sel[group], args.format).items():
+                print(f"  {fld:26} {match or 'NO MATCH'}")
+        print("\n[page]")
+        for name in ("create_button", "signin_markers", "captcha_markers"):
+            print(f"  {name:26} {s._first_match(sel[name]) or 'no match'}")
+    return 0
+
+
+def cmd_publish_selectors(args) -> int:
+    from .publish.selectors import dump_default_yaml
+
+    text = dump_default_yaml()
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+        print(f"Wrote {args.out}; edit it and pass --selectors to publish run/probe")
+    else:
+        print(text)
+    return 0
+
+
+# --------------------------------------------------------------------------- monitor commands
+def _break_even_for(book_path: str | None) -> float | None:
+    if not book_path:
+        return None
+    from .monitor.ads import break_even_acos
+    from .publish.checklist import pdf_pages
+
+    book = load_book(book_path)
+    pages = pdf_pages(book.build_dir / "interior.pdf")
+    if pages:
+        rep = price_report(book.print_.trim, book.print_.paper, pages, book.pricing.list_price)
+        return break_even_acos(rep.royalty_per_copy, rep.list_price)
+    return None
+
+
+def cmd_monitor_check(args) -> int:
+    from .monitor.status import status_markdown, title_rows
+
+    store = _publish_store(args)
+    try:
+        print(status_markdown(title_rows(store)))
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_monitor_ads(args) -> int:
+    from .monitor.ads import ads_markdown, load_ads_csv, summarize_ads
+
+    rows = load_ads_csv(Path(args.csv))
+    summary = summarize_ads(rows, target_acos=args.target_acos, break_even=_break_even_for(args.book))
+    text = ads_markdown(summary)
+    print(text)
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+    return 0
+
+
+def cmd_monitor_sales(args) -> int:
+    import datetime as dt
+
+    from .monitor.sales import load_sales, sales_markdown, summarize_sales
+
+    rows = load_sales(Path(args.file))
+    since = dt.date.fromisoformat(args.since) if args.since else None
+    text = sales_markdown(summarize_sales(rows, since))
+    print(text)
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+    return 0
+
+
+def cmd_monitor_report(args) -> int:
+    import datetime as dt
+
+    from .monitor.report import monitor_markdown, own_asin_rows, write_monitor_report
+
+    ads_summary = sales_summary = None
+    if args.ads:
+        from .monitor.ads import load_ads_csv, summarize_ads
+
+        ads_summary = summarize_ads(load_ads_csv(Path(args.ads)), target_acos=args.target_acos, break_even=_break_even_for(args.book))
+    if args.sales:
+        from .monitor.sales import load_sales, summarize_sales
+
+        sales_summary = summarize_sales(load_sales(Path(args.sales)), dt.date.fromisoformat(args.since) if args.since else None)
+    store = _publish_store(args)
+    try:
+        text = monitor_markdown(store, own_rows=own_asin_rows(Path(args.watch_db), Path(args.watchlist)), ads_summary=ads_summary, sales_summary=sales_summary)
+    finally:
+        store.close()
+    paths = write_monitor_report(text, Path(args.out))
+    print(text)
+    print(f"Report: {paths['latest']}")
+    return 0
+
+
 # --------------------------------------------------------------------------- parser
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="kdp", description="kdp-studio: niche research, metadata, manuscripts and KDP-ready files from book.yaml")
@@ -525,6 +763,99 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-claude", action="store_true")
     p.add_argument("--out", help="write JSON results to this file")
     p.set_defaults(func=cmd_watch_covers)
+
+    fmt_choices = ["ebook", "paperback", "hardcover"]
+    publish = sub.add_parser("publish", help="assisted KDP title setup (human-in-the-loop), queue and weekly quota")
+    psub = publish.add_subparsers(dest="publish_cmd", required=True)
+
+    def _run_args(pp):
+        pp.add_argument("--profile", help="persistent browser profile folder (default: %%LOCALAPPDATA%%/kdp-studio/browser-profile)")
+        pp.add_argument("--selectors", help="YAML overriding the default KDP selectors")
+        pp.add_argument("--db", default="publishing/publish.sqlite")
+        pp.add_argument("--runs", default="publishing/runs", help="folder for checklists, screenshots and flow logs")
+        pp.add_argument("--no-preflight", action="store_true", help="skip the preflight re-check of the build files")
+        pp.add_argument("--start-url", help="testing only: open this URL (a local mock page) instead of the KDP bookshelf")
+        pp.add_argument("--headless-local", action="store_true", help="testing only: headless browser, accepted for file:// or localhost start URLs")
+
+    p = psub.add_parser("checklist", help="write the manual-entry sheet for one format")
+    p.add_argument("book")
+    p.add_argument("--format", default="paperback", choices=fmt_choices)
+    p.add_argument("--db", default="publishing/publish.sqlite")
+    p.add_argument("--out")
+    p.set_defaults(func=cmd_publish_checklist)
+    p = psub.add_parser("quota", help="this week's KDP creation/submission counts per format")
+    p.add_argument("--db", default="publishing/publish.sqlite")
+    p.set_defaults(func=cmd_publish_quota)
+    p = psub.add_parser("queue", help="submission queue")
+    qsub = p.add_subparsers(dest="queue_cmd", required=True)
+    pa = qsub.add_parser("add")
+    pa.add_argument("book")
+    pa.add_argument("--format", default="paperback", choices=fmt_choices)
+    pa.add_argument("--priority", type=int, default=5, help="1 = first")
+    pa.add_argument("--db", default="publishing/publish.sqlite")
+    pa.set_defaults(func=cmd_publish_queue)
+    pl = qsub.add_parser("list")
+    pl.add_argument("--all", action="store_true", help="include finished items")
+    pl.add_argument("--db", default="publishing/publish.sqlite")
+    pl.set_defaults(func=cmd_publish_queue)
+    pr = qsub.add_parser("remove")
+    pr.add_argument("id", type=int)
+    pr.add_argument("--db", default="publishing/publish.sqlite")
+    pr.set_defaults(func=cmd_publish_queue)
+    p = psub.add_parser("run", help="open KDP in your browser and fill the title setup for one book")
+    p.add_argument("book")
+    p.add_argument("--format", default="paperback", choices=fmt_choices)
+    _run_args(p)
+    p.set_defaults(func=cmd_publish_run)
+    p = psub.add_parser("next", help="run the next queued title whose format still has weekly quota")
+    p.add_argument("--format", choices=fmt_choices)
+    _run_args(p)
+    p.set_defaults(func=cmd_publish_next)
+    p = psub.add_parser("mark", help="record a title's status/ASIN (live titles are added to competitor-watch as yours)")
+    p.add_argument("book")
+    p.add_argument("--format", default="paperback", choices=fmt_choices)
+    p.add_argument("--status", required=True, choices=["draft", "in_review", "live", "blocked", "unpublished"])
+    p.add_argument("--asin")
+    p.add_argument("--watchlist", default="watch/watchlist.yaml")
+    p.add_argument("--db", default="publishing/publish.sqlite")
+    p.set_defaults(func=cmd_publish_mark)
+    p = psub.add_parser("probe", help="open KDP and report which selectors match the page you navigate to")
+    p.add_argument("--url")
+    p.add_argument("--format", default="paperback", choices=fmt_choices)
+    p.add_argument("--profile")
+    p.add_argument("--selectors")
+    p.set_defaults(func=cmd_publish_probe)
+    p = psub.add_parser("selectors", help="print (or write) the default selector map as YAML")
+    p.add_argument("--out")
+    p.set_defaults(func=cmd_publish_selectors)
+
+    monitor = sub.add_parser("monitor", help="post-publish: title status, your ASINs, Amazon Ads and KDP sales")
+    msub2 = monitor.add_subparsers(dest="monitor_cmd", required=True)
+    p = msub2.add_parser("check", help="status of every recorded title against KDP timelines")
+    p.add_argument("--db", default="publishing/publish.sqlite")
+    p.set_defaults(func=cmd_monitor_check)
+    p = msub2.add_parser("ads", help="analyze an Amazon Ads campaign CSV export")
+    p.add_argument("--csv", required=True)
+    p.add_argument("--target-acos", type=float, default=0.30)
+    p.add_argument("--book", help="book.yaml to derive the break-even ACOS from its royalty")
+    p.add_argument("--out")
+    p.set_defaults(func=cmd_monitor_ads)
+    p = msub2.add_parser("sales", help="summarize a KDP royalties/orders report (CSV, or XLSX with openpyxl)")
+    p.add_argument("--file", required=True)
+    p.add_argument("--since", help="YYYY-MM-DD")
+    p.add_argument("--out")
+    p.set_defaults(func=cmd_monitor_sales)
+    p = msub2.add_parser("report", help="combined report: titles, quota, your ASINs, ads, sales")
+    p.add_argument("--db", default="publishing/publish.sqlite")
+    p.add_argument("--watch-db", default="watch/watch.sqlite")
+    p.add_argument("--watchlist", default="watch/watchlist.yaml")
+    p.add_argument("--ads", help="Amazon Ads CSV")
+    p.add_argument("--sales", help="KDP royalties CSV/XLSX")
+    p.add_argument("--since", help="YYYY-MM-DD for the sales summary")
+    p.add_argument("--target-acos", type=float, default=0.30)
+    p.add_argument("--book", help="book.yaml for the break-even ACOS")
+    p.add_argument("--out", default="monitor")
+    p.set_defaults(func=cmd_monitor_report)
     return parser
 
 

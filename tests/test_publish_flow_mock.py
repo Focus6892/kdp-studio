@@ -1,0 +1,96 @@
+"""Drives the assisted flow against the local mock KDP pages (file://) in a headless browser.
+Skipped when Playwright or a Chromium-based browser is unavailable."""
+
+import shutil
+import urllib.parse
+from pathlib import Path
+
+import pytest
+
+from kdp_studio.publish.browser import BrowserSession
+from kdp_studio.publish.flow import ScriptedApprover, run_flow
+from kdp_studio.publish.selectors import load_selectors
+from kdp_studio.publish.store import PublishStore
+from kdp_studio.schema import load_book
+
+ROOT = Path(__file__).resolve().parents[1]
+MOCK = ROOT / "tests" / "mock_kdp"
+EXAMPLE_DIR = ROOT / "examples" / "bold-easy-flowers"
+
+pytest.importorskip("playwright.sync_api")
+
+
+def _session(tmp_path, start_url):
+    try:
+        return BrowserSession(tmp_path / "profile", headless=True, allow_headless_local=True, start_url=start_url, slow_mo_ms=0, screenshot_dir=tmp_path / "shots").open()
+    except RuntimeError as exc:  # no browser installed
+        pytest.skip(f"no browser available: {exc}")
+
+
+def test_headless_refused_for_remote_urls(tmp_path):
+    with pytest.raises(ValueError):
+        BrowserSession(tmp_path / "profile", headless=True, allow_headless_local=True, start_url="https://kdp.amazon.com/bookshelf")
+
+
+def test_assisted_flow_against_mock(tmp_path):
+    work = tmp_path / "book"
+    shutil.copytree(EXAMPLE_DIR, work)
+    build = work / "build"
+    build.mkdir(exist_ok=True)  # the example folder may already carry a build/ from earlier runs
+    (build / "interior.pdf").write_bytes(b"%PDF-1.4 mock")
+    (build / "cover_wrap.pdf").write_bytes(b"%PDF-1.4 mock")
+    book = load_book(work / "book.yaml")
+
+    start = (MOCK / "bookshelf.html").as_uri()
+    session = _session(tmp_path, start)
+    store = PublishStore(tmp_path / "publish.sqlite")
+    approver = ScriptedApprover(["", "", "d"])  # details OK, content OK, saved as draft (never 'p')
+    try:
+        result = run_flow(book, "paperback", session, load_selectors(None), approver, store, start_url=start, book_path=str(work / "book.yaml"))
+        page = session.page
+        assert "pricing.html" in page.url
+        params = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(page.url).query))
+        # the tool never publishes
+        assert page.evaluate("window.__published") is False
+        assert page.input_value("#data-pricing-print-us-price-input") == "9.99"
+        assert page.is_checked("#data-print-book-pricing-rights-all-territories")
+    finally:
+        session.close()
+
+    assert result.status == "draft"
+    assert result.events == ["created", "draft_saved"]
+    # details page values travelled through the query string
+    assert params["d.data-print-book-title"] == "Bold & Easy Flowers"
+    assert params["d.data-print-book-primary-author-last-name"] == "Hartwell" and params["d.data-print-book-primary-author-first-name"] == "Mia"
+    assert params["d.data-print-book-language-select"] == "en"
+    assert params["d.non-public-domain"] == "own" and params["d.data-print-book-is-adult-content-no"] == "no"
+    assert params["d.data-print-book-ai-content-yes"] == "yes" and params["d.data-print-book-ai-content-images"] in ("entire-min", "some-min")
+    assert params["d.data-print-book-ai-content-text"] == "none"
+    assert params["d.data-print-book-keywords-6"] == "stress relief coloring"
+    assert "d.data-print-book-is-low-content" not in params  # coloring books are not low-content
+    assert "<h4>" in params["d.data-print-book-description"]
+    # content page
+    assert params["c.data-print-book-paper-type-black-and-white-white"] == "bw-white"
+    assert params["c.data-print-book-trim-size"] == "8.5x11" and params["c.data-print-book-bleed-yes"] == "true" and params["c.data-print-book-cover-finish-matte"] == "matte"
+    assert params["c.isbn-assigned"] == "free"
+    assert params["c.data-print-book-publisher-interior-file-upload"] == "interior.pdf" and params["c.data-print-book-publisher-cover-file-upload"] == "cover_wrap.pdf"
+    # gates were asked in order and screenshots taken
+    assert len(approver.prompts) == 3 and "never clicks Publish" in approver.prompts[-1]
+    assert len(result.screenshots) == 3
+    title_row = store.get_title(book.id, "paperback")
+    assert title_row and title_row["status"] == "draft"
+    store.close()
+
+
+def test_flow_stops_on_quit(tmp_path):
+    book = load_book(EXAMPLE_DIR / "book.yaml")
+    start = (MOCK / "details.html").as_uri()
+    session = _session(tmp_path, start)
+    store = PublishStore(tmp_path / "publish.sqlite")
+    try:
+        result = run_flow(book, "paperback", session, load_selectors(None), ScriptedApprover(["q"]), store, start_url=start)
+    finally:
+        session.close()
+    assert result.status == "aborted" and result.events == ["aborted"]
+    assert store.get_title(book.id, "paperback") is None
+    store.close()
