@@ -68,14 +68,17 @@ def test_assisted_flow_against_mock(tmp_path):
     assert "d.data-view-is-lcb" not in params and "d.data-print-book-large-print" not in params  # coloring books: neither box
     assert "<h4>" in params["d.description-hidden"] and "<h4>" in params["d.description-hidden"]  # filled through the CKEDITOR API
     assert params["d.mock-home-marketplace"] == "Amazon.com"
-    # AI disclosure lives on the Content tab and was filled there
-    assert params["c.mock-ai-yes"] == "true" and params["c.mock-ai-images"] in ("entire-min", "some-min")
-    assert params["c.mock-ai-text"] == "none"
-    # content page
-    assert params["c.data-print-book-paper-type-black-and-white-white"] == "bw-white"
-    assert params["c.data-print-book-trim-size"] == "8.5x11" and params["c.data-print-book-bleed-yes"] == "true" and params["c.data-print-book-cover-finish-matte"] == "matte"
-    assert params["c.isbn-assigned"] == "free"
-    assert params["c.data-print-book-publisher-interior-file-upload"] == "interior.pdf" and params["c.data-print-book-publisher-cover-file-upload"] == "cover_wrap.pdf"
+    # AI disclosure lives on the Content tab: radio + custom comboboxes filled in order (text, images, translations)
+    assert params["c.ai-yes"] == "yes"
+    assert params["c.ai-images-value"] == "Many or all, with minimal or no editing"
+    assert params["c.ai-text-value"] == "None" and params["c.ai-translation-value"] == "None"
+    # content page (React redesign structure)
+    assert params["c.ink-paper-BW_WHITE"] == "BW_WHITE"
+    assert params["c.trim-value"].startswith("8.5 x 11 in")
+    assert params["c.bleed-yes"] == "bleed" and params["c.cover-finish-MATTE"] == "MATTE"
+    assert params["c.isbn-type-KDP"] == "KDP" and params["c.isbn-assigned"] == "free"
+    assert params["c.cover-choice-UPLOAD"] == "UPLOAD"
+    assert params["c.manuscript-name"] == "interior.pdf" and params["c.cover-name"] == "cover_wrap.pdf"  # via the file chooser
     # gates were asked in order and screenshots taken
     assert len(approver.prompts) == 3 and "never clicks Publish" in approver.prompts[-1]
     assert len(result.screenshots) == 3

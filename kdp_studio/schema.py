@@ -75,6 +75,7 @@ class PrintSpec(BaseModel):
     cover_finish: Literal["matte", "glossy"] = "matte"
     isbn: Literal["kdp_free", "own", "none"] = "kdp_free"
     isbn_number: str | None = None
+    imprint: str | None = None  # publisher/imprint name KDP asks for with your own ISBN
 
     @field_validator("trim")
     @classmethod

@@ -131,16 +131,25 @@ class Flow:
         disclosure = self.book.ai_disclosure()
         used_ai = disclosure["Did you use AI tools in creating texts, images and/or translations?"] == "Yes"
         self._record(self.s.check(self._c("ai", "ai_yes" if used_ai else "ai_no")), "ai_content", "yes" if used_ai else "no")
-        if used_ai:
-            for key, fld in (("Text", "ai_text"), ("Images", "ai_images"), ("Translations", "ai_translation")):
-                if disclosure[key].startswith("AI-generated"):
-                    # KDP words the scope options differently per category ("Entire work" / "Many or all" / "Some sections" /
-                    # "One or a few"); pick the broadest declared option, never "None", and leave the editing level to the human.
-                    ok = self.s.select(self._c("ai", fld), label_contains=["entire", "many or all", "all", "some", "one or a few"], exclude_contains="none")
-                    self._record(ok, f"ai_{key.lower()}", "AI-generated (confirm scope and editing level yourself)")
-                    self.res.notes.append(f"AI {key}: declared as AI-generated; confirm the scope and editing level that match your workflow.")
-                else:
-                    self.s.select(self._c("ai", fld), label_contains="none")
+        if not used_ai:
+            return True
+        # KDP words the scope options differently per category ("Entire work" / "Many or all" / "Some sections" /
+        # "One or a few"); pick the broadest declared option, never "None", and leave the editing level to the human.
+        declared_needles = ["entire", "many or all", "all", "some", "one or a few"]
+        categories = (("Text", "ai_text"), ("Images", "ai_images"), ("Translations", "ai_translation"))
+        legacy_selects = self.s.find(self._c("ai", "ai_text")) is not None
+        combos = [] if legacy_selects else [loc for loc, name in self.s.comboboxes() if "trim" not in name.lower()]
+        for idx, (key, fld) in enumerate(categories):
+            wants_ai = disclosure[key].startswith("AI-generated")
+            if legacy_selects:
+                ok = self.s.select(self._c("ai", fld), label_contains=declared_needles, exclude_contains="none") if wants_ai else self.s.select(self._c("ai", fld), label_contains="none")
+            elif idx < len(combos):
+                ok = self.s.choose_combobox(combos[idx], label_contains=declared_needles, exclude_contains="none") if wants_ai else self.s.choose_combobox(combos[idx], label_contains="none")
+            else:
+                ok = False
+            if wants_ai:
+                self._record(ok, f"ai_{key.lower()}", "AI-generated (confirm scope and editing level yourself)")
+                self.res.notes.append(f"AI {key}: declared as AI-generated; confirm the scope and editing level that match your workflow.")
         return True
 
     def fill_details(self) -> None:
@@ -176,32 +185,56 @@ class Flow:
             self._record(self.s.check(self._c("details", "large_print")), "large_print", "yes")
         self.res.notes.append("Categories must be picked in KDP's 'Choose categories' dialog: " + " | ".join(md.categories))
 
+    def _choose_trim(self, trim: str) -> bool:
+        label = trim.replace("x", " x ")  # "8.5x11" -> "8.5 x 11"
+        loc = self.s.find(self._c("content", "trim"))
+        if loc is None:
+            return False
+        try:
+            tag = loc.evaluate("el => el.tagName.toLowerCase()")
+        except Exception:  # noqa: BLE001
+            tag = ""
+        if tag == "select":
+            return self.s.select(self._c("content", "trim"), label_contains=label)
+        return self.s.choose_combobox(loc, label_contains=[label + " in", label])
+
     def fill_content(self) -> None:
         art = artifacts_for(self.book, self.fmt)
-        self.fill_ai_disclosure()
         if self.fmt != "ebook":
             p = self.book.print_
             if p.isbn == "kdp_free":
-                if self.s.click(self._c("content", "isbn_free")):
+                if self.s.check(self._c("content", "isbn_free")) or self.s.click(self._c("content", "isbn_free")):
                     self.s.click(self._c("content", "isbn_confirm"))
                     self._record(True, "isbn", "free KDP ISBN")
                 else:
                     self._record(False, "isbn", "free KDP ISBN")
+                    if self.s.find(self._c("content", "isbn_none")) is not None:
+                        self.res.notes.append("KDP offers 'Publish without an ISBN' here, which means the Low-content box is ticked on Details; untick it to get a free KDP ISBN for a coloring or text book.")
+            elif p.isbn == "own":
+                self._record(self.s.check(self._c("content", "isbn_own")), "isbn", "own ISBN")
+                if p.isbn_number:
+                    self._record(self.s.fill(self._c("content", "isbn_own_input"), p.isbn_number), "isbn_number", p.isbn_number)
+                if p.imprint:
+                    self._record(self.s.fill(self._c("content", "isbn_imprint_input"), p.imprint), "imprint", p.imprint)
             else:
-                self.res.notes.append(f"ISBN option '{p.isbn}' must be entered by hand.")
+                self._record(self.s.check(self._c("content", "isbn_none")), "isbn", "publish without ISBN (low-content only)")
             self._record(self.s.check(expand(self.sel["content"]["paper"][p.paper], self.fmt)), "ink_paper", p.paper)
-            self._record(self.s.select(self._c("content", "trim"), label_contains=p.trim.replace("x", " x ")), "trim", p.trim)
+            self._record(self._choose_trim(p.trim), "trim", p.trim)
             self._record(self.s.check(self._c("content", "bleed_yes" if p.bleed else "bleed_no")), "bleed", "yes" if p.bleed else "no")
             self._record(self.s.check(self._c("content", "finish_matte" if p.cover_finish == "matte" else "finish_glossy")), "cover_finish", p.cover_finish)
         if art["manuscript"]:
-            self._record(self.s.set_files(self._c("content", "manuscript_input"), art["manuscript"]), "manuscript_upload", art["manuscript"].name)
+            ok = self.s.set_files(self._c("content", "manuscript_input"), art["manuscript"]) or self.s.upload_via_button(self._c("content", "manuscript_button"), art["manuscript"])
+            self._record(ok, "manuscript_upload", art["manuscript"].name)
         else:
             self._record(False, "manuscript_upload", "missing build artifact")
         if art["cover"]:
-            self.s.click(self._c("content", "cover_own"))
-            self._record(self.s.set_files(self._c("content", "cover_input"), art["cover"]), "cover_upload", art["cover"].name)
+            self.s.check(self._c("content", "cover_upload_choice")) or self.s.click(self._c("content", "cover_upload_choice"))
+            ok = self.s.set_files(self._c("content", "cover_input"), art["cover"]) or self.s.upload_via_button(self._c("content", "cover_button"), art["cover"])
+            self._record(ok, "cover_upload", art["cover"].name)
+            self.res.notes.append("Leave 'my cover has a barcode' unticked: the cover keeps a white box where KDP prints its own barcode.")
         else:
             self._record(False, "cover_upload", "missing build artifact")
+        self.fill_ai_disclosure()
 
     def fill_pricing(self) -> None:
         pr = self.book.pricing
@@ -234,7 +267,7 @@ class Flow:
             if self.store is not None:
                 self.store.upsert_title(self.book.id, self.fmt, "draft", title=self.book.metadata.full_title)
 
-            if not self.s.wait_for(self._c("content", "manuscript_input") + self._c("content", "isbn_free"), timeout_s=60):
+            if not self.s.wait_for(self._c("content", "page_markers"), timeout_s=60):
                 self._gate("The Content tab did not appear. Open it yourself, then press Enter:")
             self.fill_content()
             self._shot("content")
@@ -242,7 +275,7 @@ class Flow:
             if not self.s.click(self._c("content", "save_continue")):
                 self._gate("Click 'Save and Continue' yourself, then press Enter:")
 
-            if not self.s.wait_for(self._c("pricing", "price_us"), timeout_s=60):
+            if not self.s.wait_for(self._c("pricing", "page_markers"), timeout_s=60):
                 self._gate("The Pricing tab did not appear. Open it yourself, then press Enter:")
             self.fill_pricing()
             self._shot("pricing")

@@ -1,6 +1,8 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><title>Mock KDP – Paperback Content</title>
 <script>
+// Mirrors the live KDP Content tab (React redesign, probe dump 2026-10-23): radios by name/value,
+// custom ARIA comboboxes for Trim Size and the AI dropdowns, uploads through buttons + file chooser.
 function collect(prefix) {
   const p = new URLSearchParams(location.search);
   document.querySelectorAll('input, select, textarea').forEach(el => {
@@ -11,42 +13,82 @@ function collect(prefix) {
   });
   return p.toString();
 }
-function freeIsbn() { document.getElementById('isbn-confirm-box').style.display = 'block'; }
-function confirmIsbn() { document.getElementById('isbn-value').textContent = '979-8-0000-0000-0'; document.getElementById('isbn-assigned').value = 'free'; }
-</script></head>
+function openList(key) { document.querySelectorAll('[role=listbox]').forEach(l => l.style.display = 'none'); document.getElementById(key + '-list').style.display = 'block'; }
+function pick(key, el) {
+  document.getElementById(key + '-cb').textContent = el.textContent;
+  document.getElementById(key + '-value').value = el.textContent.trim();
+  document.getElementById(key + '-list').style.display = 'none';
+}
+function chooseFile(inputId, nameId) { const inp = document.getElementById(inputId); inp.onchange = () => { document.getElementById(nameId).value = inp.files[0] ? inp.files[0].name : ''; }; inp.click(); }
+function assignFreeIsbn() { document.getElementById('isbn-assigned').value = 'free'; document.getElementById('isbn-value').textContent = '979-8-0000-0000-0'; }
+</script>
+<style>[role=listbox]{border:1px solid #888;background:#fff;position:absolute} [role=option]{padding:2px 6px;cursor:pointer} [role=combobox]{border:1px solid #888;padding:4px;width:260px;display:inline-block}</style>
+</head>
 <body>
 <h1>Paperback Content (mock)</h1>
-<fieldset><legend>AI-generated content</legend>
-  <label><input type="radio" name="data[print_book][ai_content]-radio" id="mock-ai-yes" value="true"> Yes</label>
-  <label><input type="radio" name="data[print_book][ai_content]-radio" id="mock-ai-no" value="false"> No</label><br>
-  Text <select id="mock-ai-text" name="data[print_book][ai_content][text]"><option value="none">None</option><option value="some-min">Some sections, with minimal or no editing</option><option value="entire-min">Entire work, with minimal or no editing</option><option value="entire-ext">Entire work, with extensive editing</option></select>
-  Images <select id="mock-ai-images" name="data[print_book][ai_content][images]"><option value="none">None</option><option value="some-min">One or a few, with minimal or no editing</option><option value="entire-min">Many or all, with minimal or no editing</option></select>
-  Translation <select id="mock-ai-translation" name="data[print_book][ai_content][translation]"><option value="none">None</option><option value="entire-min">Entire work, with minimal or no editing</option></select>
-</fieldset>
 <fieldset><legend>ISBN</legend>
-  <button id="free-print-isbn-btn-announce" onclick="freeIsbn()">Assign me a free KDP ISBN</button>
-  <div id="isbn-confirm-box" style="display:none"><button id="print-isbn-confirm-button-announce" onclick="confirmIsbn()">Assign ISBN</button></div>
-  <span id="isbn-value"></span><input type="hidden" id="isbn-assigned" value="">
+  <label><input type="radio" name="isbn-type" id="isbn-type-KDP" value="KDP"> Get a free KDP ISBN</label>
+  <button type="button" id="assign-free-isbn" onclick="assignFreeIsbn()">Assign me a free KDP ISBN</button>
+  <span id="isbn-value"></span><input type="hidden" id="isbn-assigned" value=""><br>
+  <label><input type="radio" name="isbn-type" id="isbn-type-OWNER" value="OWNER"> Add your own ISBN</label>
+  <input type="text" id="owner-isbn" placeholder="ISBN"><input type="text" id="owner-imprint" placeholder="Publisher (e.g. imprint)">
 </fieldset>
-<fieldset><legend>Print options</legend>
-  <label><input type="radio" name="paper" id="data-print-book-paper-type-black-and-white-white" value="bw-white"> Black & white interior with white paper</label>
-  <label><input type="radio" name="paper" id="data-print-book-paper-type-black-and-white-cream" value="bw-cream"> Black & white interior with cream paper</label>
-  <label><input type="radio" name="paper" id="data-print-book-paper-type-premium-color-white" value="premium"> Premium color</label><br>
-  <select id="data-print-book-trim-size"><option value="">Choose</option><option value="5x8">5 x 8 in (12.7 x 20.32 cm)</option><option value="6x9">6 x 9 in (15.24 x 22.86 cm)</option><option value="8.5x11">8.5 x 11 in (21.59 x 27.94 cm)</option></select><br>
-  <label><input type="radio" name="bleed" id="data-print-book-bleed-no" value="false"> No Bleed</label>
-  <label><input type="radio" name="bleed" id="data-print-book-bleed-yes" value="true"> Bleed (PDF only)</label><br>
-  <label><input type="radio" name="finish" id="data-print-book-cover-finish-matte" value="matte"> Matte</label>
-  <label><input type="radio" name="finish" id="data-print-book-cover-finish-glossy" value="glossy"> Glossy</label>
+<fieldset><legend>Print Options</legend>
+  <h3>Ink and Paper Type</h3>
+  <label><input type="radio" name="ink-paper" id="ink-paper-BW_WHITE" value="BW_WHITE"> Black and white interior with white paper</label>
+  <label><input type="radio" name="ink-paper" id="ink-paper-BW_CREAM" value="BW_CREAM"> Black and white interior with cream paper</label>
+  <label><input type="radio" name="ink-paper" id="ink-paper-COLOR_COLOR" value="COLOR_COLOR"> Premium color interior with white paper</label>
+  <h3 id="trim-label">Trim Size</h3>
+  <div id="trim-cb" role="combobox" aria-labelledby="trim-label" aria-expanded="false" tabindex="0" onclick="openList('trim')">Choose a trim size</div>
+  <div id="trim-list" role="listbox" style="display:none">
+    <div role="option" onclick="pick('trim', this)">5 x 8 in (12.7 x 20.32 cm)</div>
+    <div role="option" onclick="pick('trim', this)">6 x 9 in (15.24 x 22.86 cm)</div>
+    <div role="option" onclick="pick('trim', this)">8.5 x 11 in (21.59 x 27.94 cm)</div>
+  </div>
+  <input type="hidden" id="trim-value" value="">
+  <h3>Bleed Settings</h3>
+  <label><input type="radio" name="bleed" id="bleed-no" value="no-bleed"> No Bleed</label>
+  <label><input type="radio" name="bleed" id="bleed-yes" value="bleed"> Bleed (PDF only)</label>
+  <h3>Cover Finish</h3>
+  <label><input type="radio" name="cover-finish" id="cover-finish-MATTE" value="MATTE"> Matte</label>
+  <label><input type="radio" name="cover-finish" id="cover-finish-GLOSSY" value="GLOSSY"> Glossy</label>
 </fieldset>
 <fieldset><legend>Manuscript</legend>
-  <input type="file" id="data-print-book-publisher-interior-file-upload" name="interior">
+  <button type="button" onclick="chooseFile('manuscript-file', 'manuscript-name')">Upload manuscript</button>
+  <input type="file" id="manuscript-file" style="display:none"><input type="hidden" id="manuscript-name" value="">
 </fieldset>
 <fieldset><legend>Book Cover</legend>
-  <button id="data-print-book-publisher-cover-choice-accordion" onclick="document.getElementById('cover-box').style.display='block'">Upload a cover you already have</button>
-  <div id="cover-box" style="display:none"><input type="file" id="data-print-book-publisher-cover-file-upload" name="cover"></div>
+  <label><input type="radio" name="cover-choice" id="cover-choice-COVER_CREATOR" value="COVER_CREATOR"> Use Cover Creator to make your book cover</label>
+  <label><input type="radio" name="cover-choice" id="cover-choice-UPLOAD" value="UPLOAD"> Upload a cover you already have (print-ready PDF only)</label>
+  <button type="button" onclick="chooseFile('cover-file', 'cover-name')">Upload your cover file</button>
+  <input type="file" id="cover-file" style="display:none"><input type="hidden" id="cover-name" value="">
+  <div id="publisher-barcode" role="checkbox" aria-checked="false" tabindex="0" onclick="this.setAttribute('aria-checked', this.getAttribute('aria-checked') === 'true' ? 'false' : 'true')">Yes, my cover has a barcode.</div>
 </fieldset>
-<button id="print-previewer-button-announce" onclick="document.getElementById('previewed').value='yes'">Launch Previewer</button>
+<fieldset><legend>AI-generated content</legend>
+  <label><input type="radio" name="has-ai-content" id="ai-yes" value="yes"> Yes</label>
+  <label><input type="radio" name="has-ai-content" id="ai-no" value="no"> No</label><br>
+  <div id="ai-text-cb" role="combobox" aria-expanded="false" tabindex="0" onclick="openList('ai-text')">None</div>
+  <div id="ai-text-list" role="listbox" style="display:none">
+    <div role="option" onclick="pick('ai-text', this)">None</div>
+    <div role="option" onclick="pick('ai-text', this)">Some sections, with minimal or no editing</div>
+    <div role="option" onclick="pick('ai-text', this)">Entire work, with minimal or no editing</div>
+    <div role="option" onclick="pick('ai-text', this)">Entire work, with extensive editing</div>
+  </div><input type="hidden" id="ai-text-value" value="None">
+  <div id="ai-images-cb" role="combobox" aria-expanded="false" tabindex="0" onclick="openList('ai-images')">None</div>
+  <div id="ai-images-list" role="listbox" style="display:none">
+    <div role="option" onclick="pick('ai-images', this)">None</div>
+    <div role="option" onclick="pick('ai-images', this)">One or a few, with minimal or no editing</div>
+    <div role="option" onclick="pick('ai-images', this)">Many or all, with minimal or no editing</div>
+  </div><input type="hidden" id="ai-images-value" value="None">
+  <div id="ai-translation-cb" role="combobox" aria-expanded="false" tabindex="0" onclick="openList('ai-translation')">None</div>
+  <div id="ai-translation-list" role="listbox" style="display:none">
+    <div role="option" onclick="pick('ai-translation', this)">None</div>
+    <div role="option" onclick="pick('ai-translation', this)">Entire work, with minimal or no editing</div>
+  </div><input type="hidden" id="ai-translation-value" value="None">
+</fieldset>
+<button type="button" onclick="document.getElementById('previewed').value='yes'">Launch Previewer</button>
 <input type="hidden" id="previewed" value="">
 <br>
-<button id="save-and-continue-announce" onclick="location.href='pricing.html?' + collect('c.')">Save and Continue</button>
+<button type="button" onclick="alert('draft saved')">Save as Draft</button>
+<button type="button" onclick="location.href='pricing.html?' + collect('c.')">Save and Continue</button>
 </body></html>

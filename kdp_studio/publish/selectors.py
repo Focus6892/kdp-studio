@@ -57,41 +57,57 @@ DEFAULT_SELECTORS: dict = {
         "save_draft": ["#save-announce", "button:has-text('Save as Draft')"],
         "save_continue": ["#save-and-continue-announce", "button:has-text('Save and Continue')"],
     },
-    # AI-generated content lives on the Content tab (not on Details); the flow fills it wherever it finds it.
-    "ai": {  # unverified ids; names must contain 'ai_content'/'ai-content'/'generative' - never a bare 'ai'
-        "ai_yes": ["#data-{fmt}-ai-content-yes", "input[name*='ai_content'][value='true']", "input[name*='ai-content'][value='true']", "input[name*='generative'][value='true']", "input[name*='ai_content'][value='yes']"],
-        "ai_no": ["#data-{fmt}-ai-content-no", "input[name*='ai_content'][value='false']", "input[name*='ai-content'][value='false']", "input[name*='generative'][value='false']", "input[name*='ai_content'][value='no']"],
-        "ai_text": ["#data-{fmt}-ai-content-text", "select[name*='ai_content'][name*='text']", "select[name*='ai-content'][name*='text']", "select[name*='generative'][name*='text']"],
-        "ai_images": ["#data-{fmt}-ai-content-images", "select[name*='ai_content'][name*='image']", "select[name*='ai-content'][name*='image']", "select[name*='generative'][name*='image']"],
-        "ai_translation": ["#data-{fmt}-ai-content-translation", "select[name*='ai_content'][name*='translat']", "select[name*='ai-content'][name*='translat']", "select[name*='generative'][name*='translat']"],
+    # AI-generated content lives on the Content tab (verified 2026-10-23): radios name=has-ai-content
+    # followed by three unnamed ARIA comboboxes (text, images, translations) that the flow fills by order.
+    "ai": {
+        "ai_yes": ["input[name='has-ai-content'][value='yes']", "#data-{fmt}-ai-content-yes", "input[name*='ai_content'][value='true']", "input[name*='ai-content'][value='true']"],
+        "ai_no": ["input[name='has-ai-content'][value='no']", "#data-{fmt}-ai-content-no", "input[name*='ai_content'][value='false']", "input[name*='ai-content'][value='false']"],
+        # legacy <select> variants (older UI / eBook flow); the React comboboxes have no stable ids
+        "ai_text": ["#data-{fmt}-ai-content-text", "select[name*='ai_content'][name*='text']", "select[name*='ai-content'][name*='text']"],
+        "ai_images": ["#data-{fmt}-ai-content-images", "select[name*='ai_content'][name*='image']", "select[name*='ai-content'][name*='image']"],
+        "ai_translation": ["#data-{fmt}-ai-content-translation", "select[name*='ai_content'][name*='translat']", "select[name*='ai-content'][name*='translat']"],
     },
-    "content": {  # unverified: probe the Content tab and adjust
-        "isbn_free": ["#free-print-isbn-btn-announce", "button:has-text('Assign me a free KDP ISBN')", "button:has-text('Get a free KDP ISBN')"],
-        "isbn_confirm": ["#print-isbn-confirm-button-announce", "button:has-text('Assign ISBN')", "button:has-text('Confirm')"],
+    # Content tab (React redesign, verified 2026-10-23 on a paperback draft). Trim size and the AI
+    # dropdowns are custom comboboxes; uploads open the native file chooser from a button.
+    "content": {
+        "page_markers": ["input[name='isbn-type']", "#ink-paper-BW_WHITE", "button:has-text('Upload manuscript')", "#data-print-book-publisher-interior-file-upload"],
+        "isbn_none": ["input[name='isbn-type'][value='NONE']", "label:has-text('Publish without an ISBN')"],
+        "isbn_own": ["input[name='isbn-type'][value='OWNER']", "label:has-text('Add your own ISBN')"],
+        "isbn_own_input": ["#owner-isbn", "input[name*='isbn']"],
+        "isbn_imprint_input": ["#owner-imprint", "input[name*='imprint']"],
+        # free KDP ISBN: shown only when the title is NOT low-content (unverified values)
+        "isbn_free": ["input[name='isbn-type'][value='KDP']", "input[name='isbn-type'][value='FREE']", "input[name='isbn-type'][value='AMAZON']", "label:has-text('Get a free KDP ISBN')", "label:has-text('free KDP ISBN')", "#free-print-isbn-btn-announce"],
+        "isbn_confirm": ["button:has-text('Assign me a free KDP ISBN')", "button:has-text('Assign ISBN')", "#print-isbn-confirm-button-announce"],
         "paper": {
-            "white_bw": ["#data-print-book-paper-type-black-and-white-white", "input[value='bw-white']", "input[name*='paper'][value*='white']:not([value*='color'])"],
-            "cream_bw": ["#data-print-book-paper-type-black-and-white-cream", "input[value='bw-cream']", "input[name*='paper'][value*='cream']"],
-            "groundwood_bw": ["#data-print-book-paper-type-black-and-white-groundwood", "input[value='bw-groundwood']", "input[name*='paper'][value*='groundwood']"],
-            "standard_color": ["#data-print-book-paper-type-standard-color-white", "input[value='standard-color']", "input[name*='paper'][value*='standard']"],
-            "premium_color": ["#data-print-book-paper-type-premium-color-white", "input[value='premium-color']", "input[name*='paper'][value*='premium']"],
+            "white_bw": ["#ink-paper-BW_WHITE", "input[value='BW_WHITE']", "#data-print-book-paper-type-black-and-white-white"],
+            "cream_bw": ["#ink-paper-BW_CREAM", "input[value='BW_CREAM']", "#data-print-book-paper-type-black-and-white-cream"],
+            "groundwood_bw": ["#ink-paper-BW_GROUNDWOOD", "input[value='BW_GROUNDWOOD']"],
+            "standard_color": ["#ink-paper-COLOR_WHITE", "input[value='COLOR_WHITE']", "#data-print-book-paper-type-standard-color-white"],
+            "premium_color": ["#ink-paper-COLOR_COLOR", "input[value='COLOR_COLOR']", "#data-print-book-paper-type-premium-color-white"],
         },
-        "trim": ["#data-print-book-trim-size", "select[name*='trim']", "#trim-size-select"],
-        "bleed_yes": ["#data-print-book-bleed-yes", "input[name*='bleed'][value='true']", "label:has-text('Bleed (PDF only)')"],
-        "bleed_no": ["#data-print-book-bleed-no", "input[name*='bleed'][value='false']", "label:has-text('No Bleed')"],
-        "finish_matte": ["#data-print-book-cover-finish-matte", "input[name*='finish'][value='matte']", "label:has-text('Matte')"],
-        "finish_glossy": ["#data-print-book-cover-finish-glossy", "input[name*='finish'][value='glossy']", "label:has-text('Glossy')"],
-        "manuscript_input": ["#data-print-book-publisher-interior-file-upload", "#data-ebook-publisher-file-upload", "input[type='file'][name*='interior']", "input[type='file'][name*='manuscript']", "input[type='file']"],
-        "cover_own": ["#data-print-book-publisher-cover-choice-accordion", "#data-ebook-publisher-cover-choice-accordion", "text=Upload a cover you already have", "text=Upload your cover file"],
+        "trim": [{"role": "combobox", "name": "Trim Size"}, "#data-print-book-trim-size", "select[name*='trim']"],
+        "bleed_yes": ["#bleed-yes", "input[value='bleed']", "#data-print-book-bleed-yes", "label:has-text('Bleed (PDF only)')"],
+        "bleed_no": ["#bleed-no", "input[value='no-bleed']", "#data-print-book-bleed-no", "label:has-text('No Bleed')"],
+        "finish_matte": ["#cover-finish-MATTE", "input[value='MATTE']", "#data-print-book-cover-finish-matte"],
+        "finish_glossy": ["#cover-finish-GLOSSY", "input[value='GLOSSY']", "#data-print-book-cover-finish-glossy"],
+        "manuscript_button": ["button:has-text('Upload manuscript')", "button:has-text('Upload paperback manuscript')", "button:has-text('Upload eBook manuscript')"],
+        "manuscript_input": ["#data-print-book-publisher-interior-file-upload", "#data-ebook-publisher-file-upload", "input[type='file'][name*='interior']", "input[type='file'][name*='manuscript']"],
+        "cover_upload_choice": ["input[name='cover-choice'][value='UPLOAD']", "label:has-text('Upload a cover you already have')", "#data-print-book-publisher-cover-choice-accordion"],
+        "cover_button": ["button:has-text('Upload your cover file')", "button:has-text('Upload cover')"],
         "cover_input": ["#data-print-book-publisher-cover-file-upload", "#data-ebook-publisher-cover-file-upload", "input[type='file'][name*='cover']"],
+        "cover_has_barcode": ["#publisher-barcode", "[role='checkbox']:has-text('my cover has a barcode')"],
         "upload_ok": ["text=Manuscript uploaded successfully", "text=Cover uploaded successfully", "text=uploaded successfully"],
-        "previewer": ["#print-previewer-button-announce", "#ebook-previewer-button-announce", "button:has-text('Launch Previewer')"],
-        "save_continue": ["#save-and-continue-announce", "button:has-text('Save and Continue')"],
+        "previewer": ["button:has-text('Launch Previewer')", "#print-previewer-button-announce", "#ebook-previewer-button-announce"],
+        "save_draft": ["button:has-text('Save as Draft')", "#save-announce"],
+        "save_continue": ["button:has-text('Save and Continue')", "#save-and-continue-announce"],
     },
-    "pricing": {  # unverified: probe the Pricing tab and adjust
-        "all_territories": ["#data-print-book-pricing-rights-all-territories", "#data-ebook-pricing-rights-all-territories", "input[name*='territor'][value='all']", "label:has-text('All territories')"],
-        "kdp_select": ["#data-ebook-kdp-select-enroll", "input[name*='kdp-select']", "input[name*='kdpSelect']"],
+    "pricing": {  # unverified: probe the Rights & Pricing tab and adjust
+        "page_markers": ["input[id*='us-price']", "label:has-text('All territories')", "input[name*='territor']", "button:has-text('Publish')"],
+        "all_territories": ["#data-print-book-pricing-rights-all-territories", "#data-ebook-pricing-rights-all-territories", "input[name*='territor'][value='all']", "input[name*='territor'][value='ALL']", "label:has-text('All territories')"],
+        "kdp_select": ["#data-ebook-kdp-select-enroll", "input[name*='kdp-select']", "input[name*='kdpSelect']", "label:has-text('Enroll my eBook in KDP Select')"],
         "price_us": ["#data-pricing-print-us-price-input", "#data-pricing-ebook-us-price-input", "input[id*='us-price']", "input[name*='price'][name*='US']"],
-        "expanded_distribution": ["#data-pricing-print-expanded-distribution", "input[name*='expanded']"],
+        "expanded_distribution": ["#data-pricing-print-expanded-distribution", "input[name*='expanded']", "label:has-text('Expanded Distribution')"],
+        "save_draft": ["button:has-text('Save as Draft')", "#save-announce"],
         "publish": ["#save-and-publish-announce", "button:has-text('Publish Your')", "button:has-text('Publish')"],
     },
 }
@@ -117,11 +133,15 @@ def dump_default_yaml() -> str:
     return yaml.safe_dump(DEFAULT_SELECTORS, sort_keys=False, allow_unicode=True, width=200)
 
 
-def expand(candidates: list[str], fmt: str, **kw) -> list[str]:
+def expand(candidates: list, fmt: str, **kw) -> list:
+    """Substitute {fmt}/{fmt_u}/{i} in string candidates; role dicts pass through unchanged."""
     tok = FMT_TOKEN.get(fmt, "print-book")
     tok_u = tok.replace("-", "_")  # form field names use data[print_book][...]
-    out = []
+    out: list = []
     for c in candidates:
+        if not isinstance(c, str):
+            out.append(c)
+            continue
         try:
             out.append(c.format(fmt=tok, fmt_u=tok_u, **kw))
         except (KeyError, IndexError):

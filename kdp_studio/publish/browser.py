@@ -118,17 +118,90 @@ class BrowserSession:
             pass
         return scopes
 
-    def find(self, candidates: list[str]):
-        """First candidate selector that matches at least one element (in any frame), else None."""
-        for sel in candidates:
+    @staticmethod
+    def _locator(scope, cand):
+        """A candidate is a CSS/text selector string or {"role": ..., "name": ...} for get_by_role."""
+        if isinstance(cand, dict):
+            return scope.get_by_role(cand["role"], name=cand.get("name"), exact=bool(cand.get("exact", False)))
+        return scope.locator(cand)
+
+    def find(self, candidates: list):
+        """First candidate that matches at least one element (in any frame), else None."""
+        for cand in candidates:
             for scope in self._scopes():
                 try:
-                    loc = scope.locator(sel)
+                    loc = self._locator(scope, cand)
                     if loc.count() > 0:
                         return loc.first
                 except Exception:  # noqa: BLE001 - invalid selector or detached frame
                     continue
         return None
+
+    def comboboxes(self) -> list[tuple[object, str]]:
+        """Every ARIA combobox on the page with its accessible name (React-style custom dropdowns)."""
+        out: list[tuple[object, str]] = []
+        for scope in self._scopes():
+            try:
+                locs = scope.get_by_role("combobox").all()
+            except Exception:  # noqa: BLE001
+                continue
+            for loc in locs:
+                try:
+                    name = loc.evaluate(
+                        """el => { const lb = el.getAttribute('aria-labelledby');
+                                   if (lb) { const t = el.ownerDocument.getElementById(lb); if (t) return t.textContent.trim(); }
+                                   return el.getAttribute('aria-label') || ''; }"""
+                    )
+                except Exception:  # noqa: BLE001
+                    name = ""
+                out.append((loc, name or ""))
+        return out
+
+    def choose_combobox(self, loc, *, label_equals: str | None = None, label_contains: str | list[str] | None = None, exclude_contains: str | None = None) -> bool:
+        """Open a custom combobox and click the option chosen by exact label, label needles (in order),
+        or the first option not containing `exclude_contains`."""
+        try:
+            loc.click()
+            options = self.page.get_by_role("option")
+            try:
+                options.first.wait_for(state="visible", timeout=5000)
+            except Exception:  # noqa: BLE001 - no listbox opened
+                self.page.keyboard.press("Escape")
+                return False
+            texts = [t.strip() for t in options.all_text_contents()]
+            idx = None
+            if label_equals is not None:
+                idx = next((i for i, t in enumerate(texts) if t.lower() == label_equals.lower()), None)
+            if idx is None and label_contains:
+                needles = [label_contains] if isinstance(label_contains, str) else list(label_contains)
+                for needle in needles:
+                    idx = next((i for i, t in enumerate(texts) if needle.lower() in t.lower()), None)
+                    if idx is not None:
+                        break
+            if idx is None and exclude_contains is not None:
+                idx = next((i for i, t in enumerate(texts) if t and exclude_contains.lower() not in t.lower()), None)
+            if idx is None:
+                self.page.keyboard.press("Escape")
+                return False
+            options.nth(idx).click()
+            return True
+        except Exception as exc:  # noqa: BLE001
+            log.info("combobox choice failed: %s", str(exc).splitlines()[0][:120])
+            return False
+
+    def upload_via_button(self, candidates: list, path: Path) -> bool:
+        """Click an 'Upload ...' button that opens the native file chooser and feed it the file."""
+        loc = self.find(candidates)
+        if loc is None:
+            return False
+        try:
+            with self.page.expect_file_chooser(timeout=10000) as fc_info:
+                loc.click()
+            fc_info.value.set_files(str(path))
+            return True
+        except Exception as exc:  # noqa: BLE001
+            log.info("upload via button failed: %s", str(exc).splitlines()[0][:120])
+            return False
 
     def inventory(self, limit: int = 600) -> dict:
         """Structural dump of every form control and button on the page and its frames.
@@ -348,12 +421,12 @@ class BrowserSession:
                 out[field] = self._first_match(expand(cands, fmt, i=0))
         return out
 
-    def _first_match(self, cands: list[str]) -> str | None:
-        for sel in cands:
+    def _first_match(self, cands: list) -> str | None:
+        for cand in cands:
             for scope in self._scopes():
                 try:
-                    if scope.locator(sel).count() > 0:
-                        return sel
+                    if self._locator(scope, cand).count() > 0:
+                        return cand if isinstance(cand, str) else f"role={cand.get('role')} name={cand.get('name')!r}"
                 except Exception:  # noqa: BLE001
                     continue
         return None
