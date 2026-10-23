@@ -10,7 +10,7 @@ build/
 dist/
 .DS_Store
 Thumbs.db
-niches/
+/niches/
 examples/**/metadata/
 *.bak
-watch/
+/watch/
