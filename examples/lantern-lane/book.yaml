@@ -39,6 +39,9 @@ print:
   cover_finish: matte
   isbn: kdp_free
 
+ebook:
+  drm: false                      # KDP asks on the eBook Content tab; cannot be changed after publishing
+
 interior:
   type: story
   manuscript_dir: manuscript

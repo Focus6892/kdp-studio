@@ -75,7 +75,12 @@ DEFAULT_SELECTORS: dict = {
     # Content tab (React redesign, verified 2026-10-23 on a paperback draft). Trim size and the AI
     # dropdowns are custom comboboxes; uploads open the native file chooser from a button.
     "content": {
-        "page_markers": ["input[name='isbn-type']", "#ink-paper-BW_WHITE", "button:has-text('Upload manuscript')", "#data-print-book-publisher-interior-file-upload"],
+        "page_markers": ["input[name='isbn-type']", "#ink-paper-BW_WHITE", "button:has-text('Upload manuscript')", "#data-print-book-publisher-interior-file-upload",
+                         # eBook Content tab (unverified guesses until probed)
+                         "button:has-text('Upload eBook manuscript')", "input[name*='drm']", "text=Digital Rights Management", "#data-ebook-publisher-file-upload"],
+        # eBook only: KDP requires a DRM answer (unverified candidates; the flow reports the field for hand entry when none matches)
+        "drm_yes": ["input[name='drm'][value='yes']", "input[name*='drm'][value='true']", "input[name*='drm'][value='YES']", "#drm-yes", "#data-ebook-drm-yes"],
+        "drm_no": ["input[name='drm'][value='no']", "input[name*='drm'][value='false']", "input[name*='drm'][value='NO']", "#drm-no", "#data-ebook-drm-no"],
         "isbn_none": ["input[name='isbn-type'][value='NONE']", "label:has-text('Publish without an ISBN')"],
         "isbn_own": ["input[name='isbn-type'][value='OWNER']", "label:has-text('Add your own ISBN')"],
         "isbn_own_input": ["#owner-isbn", "input[name*='isbn']"],
@@ -125,6 +130,9 @@ DEFAULT_SELECTORS: dict = {
         "price_inputs": ["input[aria-label^='Price for Amazon']", "input[id^='price-input-']"],
         # one per non-US marketplace, right after its price input; clicked only for rows KDP left empty
         "base_on_us": ["a[aria-label='Base this price on Amazon.com'], [role='button'][aria-label='Base this price on Amazon.com']"],
+        # eBook royalty plan (unverified candidates): 70% needs a list price between 2.99 and 9.99 USD
+        "royalty_70": ["input[name*='royalty'][value='70']", "input[name*='royalty'][value='SEVENTY']", "#royalty-plan-70", "#data-ebook-royalty-plan-70", "label:has-text('70%')"],
+        "royalty_35": ["input[name*='royalty'][value='35']", "input[name*='royalty'][value='THIRTY_FIVE']", "#royalty-plan-35", "#data-ebook-royalty-plan-35", "label:has-text('35%')"],
         "kdp_select": ["#data-ebook-kdp-select-enroll", "input[name*='kdp-select']", "input[name*='kdpSelect']", "[role='checkbox'][aria-label*='KDP Select']", "label:has-text('Enroll my eBook in KDP Select')"],
         "back": ["button:has-text('Back to Content')"],
         "save_draft": ["button:has-text('Save as Draft')", "#save-announce"],

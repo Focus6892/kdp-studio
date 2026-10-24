@@ -259,6 +259,12 @@ class CoverSpec(BaseModel):
     debug_guides: bool = False
 
 
+class EbookSpec(BaseModel):
+    """Kindle eBook options that have no print counterpart."""
+
+    drm: bool = False  # KDP requires an answer; DRM cannot be changed after publishing
+
+
 class Pricing(BaseModel):
     marketplace: Literal["amazon.com"] = "amazon.com"
     list_price: float = Field(gt=0)
@@ -276,6 +282,7 @@ class Book(BaseModel):
     formats: list[Literal["paperback", "hardcover", "ebook"]] = Field(default_factory=lambda: ["paperback"])
     metadata: Metadata
     print_: PrintSpec = Field(default_factory=PrintSpec, alias="print")
+    ebook: EbookSpec = Field(default_factory=EbookSpec)
     interior: Interior
     cover: CoverSpec = Field(default_factory=CoverSpec)
     pricing: Pricing

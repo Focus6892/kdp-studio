@@ -70,6 +70,7 @@ def test_checklist_contains_every_field():
     assert "REQUIRED" in story.ai_disclosure()["AI tools"]  # no tool names given yet
     etext = build_checklist(story, "ebook")
     assert "KDP Select" in etext and "$2.99" in etext
+    assert "DRM): No" in etext and "Royalty plan: 70%" in etext and story.ebook.drm is False
 
 
 def test_diagnose_cover_size_error():

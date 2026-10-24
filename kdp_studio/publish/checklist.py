@@ -83,6 +83,7 @@ def build_checklist(book: Book, fmt: str, quota: QuotaStatus | None = None) -> s
     if fmt == "ebook":
         lines.append("- Manuscript: " + (f"{art['manuscript'].name} ({file_mb(art['manuscript']):.1f} MB)" if art["manuscript"] else "MISSING — build the EPUB first"))
         lines.append("- Cover: upload your own — " + (f"{art['cover'].name}" if art["cover"] else "MISSING — build the cover first"))
+        lines.append(f"- Digital Rights Management (DRM): {'Yes' if book.ebook.drm else 'No'} (KDP requires an answer; it cannot be changed after publishing)")
         lines.append("- Launch Previewer and check the table of contents, chapter breaks and images.")
     else:
         isbn = {"kdp_free": "Get a free KDP ISBN", "own": f"Use my own ISBN ({book.print_.isbn_number or 'number missing'})", "none": "Publish without an ISBN (low-content only)"}[book.print_.isbn]
@@ -100,6 +101,7 @@ def build_checklist(book: Book, fmt: str, quota: QuotaStatus | None = None) -> s
     if fmt == "ebook":
         price = book.pricing.ebook_list_price or 2.99
         lines.append(f"- KDP Select: {'enroll' if book.pricing.kdp_select else 'do not enroll'} (90-day Kindle exclusivity)")
+        lines.append(f"- Royalty plan: {'70% (list price between $2.99 and $9.99)' if 2.99 <= price <= 9.99 else '35%'}")
         lines.append(f"- List price (amazon.com): ${price:.2f} -> estimated royalty ${ebook_royalty(price):.2f} per sale ({'70%' if 2.99 <= price <= 9.99 else '35%'} tier)")
     else:
         if pages:

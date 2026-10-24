@@ -284,6 +284,9 @@ class Flow:
             self._record(self._choose_trim(p.trim), "trim", p.trim)
             self._record(self.s.check(self._c("content", "bleed_yes" if p.bleed else "bleed_no")), "bleed", "yes" if p.bleed else "no")
             self._record(self.s.check(self._c("content", "finish_matte" if p.cover_finish == "matte" else "finish_glossy")), "cover_finish", p.cover_finish)
+        else:
+            drm = self.book.ebook.drm
+            self._record(self.s.check(self._c("content", "drm_yes" if drm else "drm_no")), "drm", "yes" if drm else "no")
         if art["manuscript"]:
             ok = self.s.set_files(self._c("content", "manuscript_input"), art["manuscript"]) or self.s.upload_via_button(self._c("content", "manuscript_button"), art["manuscript"])
             self._record(ok, "manuscript_upload", art["manuscript"].name)
@@ -293,7 +296,8 @@ class Flow:
             self.s.check(self._c("content", "cover_upload_choice")) or self.s.click(self._c("content", "cover_upload_choice"))
             ok = self.s.set_files(self._c("content", "cover_input"), art["cover"]) or self.s.upload_via_button(self._c("content", "cover_button"), art["cover"])
             self._record(ok, "cover_upload", art["cover"].name)
-            self.res.notes.append("Leave 'my cover has a barcode' unticked: the cover keeps a white box where KDP prints its own barcode.")
+            if self.fmt != "ebook":
+                self.res.notes.append("Leave 'my cover has a barcode' unticked: the cover keeps a white box where KDP prints its own barcode.")
         else:
             self._record(False, "cover_upload", "missing build artifact")
         self.fill_ai_disclosure()
@@ -306,6 +310,8 @@ class Flow:
             price = pr.ebook_list_price or pr.list_price
             if pr.kdp_select:
                 self._record(self.s.check(self._c("pricing", "kdp_select")), "kdp_select", "enroll")
+            plan = "royalty_70" if 2.99 <= price <= 9.99 else "royalty_35"
+            self._record(self.s.check(self._c("pricing", plan)), "royalty_plan", plan[-2:] + "%")
         else:
             price = pr.list_price
             # distribution columns: the book must stay on sale in every Amazon store; Expanded Distribution follows book.yaml
