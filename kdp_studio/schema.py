@@ -115,6 +115,8 @@ class CleanupOptions(BaseModel):
     despeckle: int = Field(1, ge=0, le=5)
     autocontrast: bool = True
     art_margin_in: float = Field(0.5, ge=0.25, le=2.0)
+    hollow_fills: bool = True  # solid black regions become outlines (colorable) instead of failing QA
+    hollow_border_frac: float = Field(0.006, ge=0.001, le=0.03)  # border kept around hollowed regions, as a fraction of the art width
 
 
 class DedupeOptions(BaseModel):
@@ -132,7 +134,10 @@ class QAOptions(BaseModel):
     model: str = "claude-opus-5-5"
     min_ink_ratio: float = Field(0.01, ge=0.0, le=1.0)
     max_ink_ratio: float = Field(0.30, ge=0.0, le=1.0)
-    max_solid_black: float = Field(0.015, ge=0.0, le=0.5)  # share of the page that is solid black after erosion (flower centres etc. are fine)
+    max_solid_black: float = Field(0.03, ge=0.0, le=0.5)
+    reject_people: bool = True  # free local CLIP zero-shot filter: people, nudity, text (model-generated pages only)
+    people_threshold: float = Field(0.35, ge=0.05, le=0.95)
+    content_model: str = "openai/clip-vit-base-patch32"  # share of the page that is solid black after erosion (flower centres etc. are fine)
     max_retries: int = Field(2, ge=0, le=5)
 
 

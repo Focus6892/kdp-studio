@@ -9,7 +9,7 @@ weight is 0.75 pt = 3.1 px at 300 DPI) -> paste onto a white page.
 from __future__ import annotations
 
 import numpy as np
-from PIL import Image, ImageFilter, ImageOps
+from PIL import Image, ImageChops, ImageFilter, ImageOps
 
 from ..schema import CleanupOptions
 
@@ -78,10 +78,24 @@ def thicken(b: Image.Image, min_line_px: int, max_iters: int = 5) -> Image.Image
     return b
 
 
+def hollow_fills(b: Image.Image, border_px: int) -> Image.Image:
+    """Turn solid black regions into outlines: anything thicker than 2*border_px keeps only a border of
+    border_px, so filled leaves, dark hair or black backgrounds become colorable shapes. Lines thinner
+    than that are untouched. `b` is a binary 'L' image with ink = 0."""
+    if border_px < 1:
+        return b
+    ink = ImageOps.invert(b)  # ink = 255
+    core = ink.filter(ImageFilter.MinFilter(2 * border_px + 1))  # survives only deep inside solid regions
+    hollow = ImageChops.subtract(ink, core)
+    return ImageOps.invert(hollow)
+
+
 def prepare_art(src: Image.Image, box_px: tuple[int, int], opts: CleanupOptions) -> Image.Image:
     g = to_grayscale_clean(src, opts)
     g = contain_resize(g, box_px)
     b = binarize(g, 128)
+    if opts.hollow_fills:
+        b = hollow_fills(b, max(opts.min_line_px, round(box_px[0] * opts.hollow_border_frac)))
     return thicken(b, opts.min_line_px)
 
 

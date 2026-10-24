@@ -12,11 +12,11 @@ from ..schema import Book, ColoringInterior
 from ..util import ensure_dir, write_json
 from .cleanup import place_on_page, prepare_art
 from .dedupe import Descriptor, HashEntry, HashLibrary, describe, is_duplicate
-from .generate import ProviderExhausted, make_provider
+from .generate import API_PROVIDERS, ProviderExhausted, make_provider
 from .layout import InteriorResult, PageSpec, build_page_sequence, render_interior
 from .pagegeom import page_geometry
 from .prompts import build_prompts
-from .qa import claude_qa, heuristic_qa
+from .qa import claude_qa, heuristic_qa, content_qa
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +52,9 @@ def build_coloring_interior(book: Book, image_limit: int | None = None) -> Inter
     raw_dir = ensure_dir(build / "raw")
     art_dir = ensure_dir(build / "art")
     pages_dir = ensure_dir(build / "pages")
+    for d in (raw_dir, art_dir, pages_dir):  # leftovers from an earlier build would be mistaken for this one's pages
+        for old_file in d.glob("*.png"):
+            old_file.unlink()
 
     n = min(interior.images, image_limit) if image_limit else interior.images
     prompts = build_prompts(interior, n)
@@ -89,6 +92,12 @@ def build_coloring_interior(book: Book, image_limit: int | None = None) -> Inter
                 h = heuristic_qa(art, interior.qa)
                 qa_log.append({"attempt": attempt, **h.as_dict()})
                 reasons.extend(h.reasons)
+
+            if interior.qa.reject_people and not reasons and provider.name in API_PROVIDERS:
+                cq = content_qa(raw_path, interior.qa)  # the colour original tells people/nudity apart far better than the thresholded art
+                if cq is not None:
+                    qa_log.append({"attempt": attempt, **cq.as_dict()})
+                    reasons.extend(cq.reasons)
 
             desc = describe(art)
             if interior.dedupe.enabled and not reasons:
