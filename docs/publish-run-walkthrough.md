@@ -129,3 +129,11 @@ bình thường bằng `d` hoặc `p`.
 Kết quả lần chạy thật đầu tiên (Lantern Lane, 2026-10-23/24, bản nháp JNZ7EMV4MER): tool điền 23 field, 4 field nhập tay
 (language mặc định, giấy cream vì thẻ radio dạng card, territories và giá vì tab Pricing không tự hiện). Đã vá cả ba nguyên nhân.
 
+## Kết quả luồng eBook (2026-10-24, bản nháp A2XGXDQZOB80IP)
+
+Lần resume với code mới: tool điền 24 field (Details đủ, 1 category, DRM No + đồng ý tải về, bìa, EPUB, accessibility, AI Images "one or a few", royalty 70%);
+6 field người làm tay: 2 category (vì bản nháp đã có 3), khối AI Yes (hàng accordion), tên công cụ AI (`provenance.ai_tools` để trống), territories (KDP đã mặc định worldwide),
+giá Mỹ (ô không có id). Cả bốn nguyên nhân kỹ thuật đã vá ngay sau lần chạy; lần chạy eBook kế tiếp sẽ cho biết còn sót gì.
+
+Tài khoản đang báo "Account Information Incomplete": hoàn tất thông tin thuế và tài khoản nhận tiền trong KDP trước khi xuất bản thật.
+
