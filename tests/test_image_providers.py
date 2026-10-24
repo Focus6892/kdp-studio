@@ -49,6 +49,13 @@ def test_provider_bodies_are_shaped_for_each_api(monkeypatch):
     body, ctype = _multipart({"prompt": "p", "aspect_ratio": "2:3"})
     assert ctype.startswith("multipart/form-data; boundary=") and b'name="prompt"' in body and body.endswith(b"--\r\n")
     assert _aspect((1536, 1024), GoogleImagenProvider.RATIOS) == "4:3"
+    monkeypatch.setenv("CF_ACCOUNT_ID", "acc")
+    monkeypatch.setenv("CF_API_TOKEN", "tok")
+    from kdp_studio.interior.generate import CloudflareProvider, PollinationsProvider
+
+    cf = CloudflareProvider(model=None, size="1024x1536", negative_prompt="woman, child")
+    assert cf.body("a daisy", (1024, 1536)) == {"prompt": "a daisy", "steps": 6}  # FLUX: never fold the negative prompt in
+    assert "Avoid" not in PollinationsProvider(model=None, size="1024x1536", negative_prompt="woman").url("a daisy", 1, (1024, 1536))
 
 
 def test_missing_key_is_a_clear_error(monkeypatch):

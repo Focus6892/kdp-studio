@@ -12,7 +12,7 @@ from ..schema import Book, ColoringInterior
 from ..util import ensure_dir, write_json
 from .cleanup import place_on_page, prepare_art
 from .dedupe import Descriptor, HashEntry, HashLibrary, describe, is_duplicate
-from .generate import API_PROVIDERS, ProviderExhausted, make_provider
+from .generate import API_PROVIDERS, ProviderError, ProviderExhausted, make_provider
 from .layout import InteriorResult, PageSpec, build_page_sequence, render_interior
 from .pagegeom import page_geometry
 from .prompts import build_prompts
@@ -84,6 +84,10 @@ def build_coloring_interior(book: Book, image_limit: int | None = None) -> Inter
             except ProviderExhausted as exc:
                 reasons_all.append(str(exc))
                 break
+            except ProviderError as exc:  # one refused/failed request (moderation, 5xx after retries) costs one attempt, not the book
+                log.warning("page %d attempt %d: %s", p.index, attempt, str(exc).splitlines()[0][:200])
+                reasons_all.append(f"attempt {attempt}: provider error: {str(exc).splitlines()[0][:160]}")
+                continue
             with Image.open(raw_path) as src:
                 art = prepare_art(src, art_box, interior.cleanup)
 

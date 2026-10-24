@@ -377,7 +377,7 @@ class PollinationsProvider:
 
     def url(self, prompt: str, seed: int, size: tuple[int, int]) -> str:
         q = {"width": size[0], "height": size[1], "model": self.model, "nologo": "true", "enhance": "false", "safe": "true", "seed": seed}
-        return self.endpoint + urllib.parse.quote(_with_negative(prompt, self.negative_prompt)) + "?" + urllib.parse.urlencode(q)
+        return self.endpoint + urllib.parse.quote(prompt) + "?" + urllib.parse.urlencode(q)  # FLUX: positive prompt only
 
     def generate(self, prompt: str, index: int, attempt: int, out_path: Path, size: tuple[int, int]) -> Path:
         wait = self.min_interval_s - (time.time() - self._last)
@@ -416,7 +416,9 @@ class CloudflareProvider:
 
     def body(self, prompt: str, size: tuple[int, int]) -> dict:
         if "flux" in self.model:
-            return {"prompt": _with_negative(prompt, self.negative_prompt), "steps": 6}
+            # FLUX has no negative prompt; folding 'Avoid: woman, child, ...' into the text trips Workers AI's prompt
+            # moderation (HTTP 400 'NSFW content') and can even summon what it names. Positive prompt only.
+            return {"prompt": prompt, "steps": 6}
         # SDXL / DreamShaper-LCM (Beta): width/height 256-2048; LCM wants few steps and low guidance
         lcm = "lcm" in self.model
         b = {"prompt": prompt, "width": min(size[0], 2048), "height": min(size[1], 2048), "num_steps": 8 if lcm else 20}
