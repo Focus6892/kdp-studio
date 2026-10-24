@@ -94,7 +94,7 @@ def run_publish(book_path: Path, opts: PublishOptions, approver: Approver, now: 
         selectors = load_selectors(opts.selectors_path)
         headless = bool(opts.headless_local)
         with BrowserSession(opts.profile_dir, channels=opts.channels, headless=headless, allow_headless_local=opts.headless_local, start_url=opts.start_url, slow_mo_ms=opts.slow_mo_ms, screenshot_dir=run_dir / "screenshots") as session:
-            result = run_flow(book, opts.fmt, session, selectors, approver, store, start_url=opts.start_url, book_path=str(book_path), resume=opts.resume)
+            result = run_flow(book, opts.fmt, session, selectors, approver, store, start_url=opts.start_url, book_path=str(book_path), resume=opts.resume, dump_dir=run_dir / "dom")
         write_json(run_dir / "flow.json", {**result.as_dict(), "book_id": book.id, "format": opts.fmt, "browser": session.channel_used, "preconditions": [x.as_dict() for x in findings]})
         return result, findings, run_dir
     finally:

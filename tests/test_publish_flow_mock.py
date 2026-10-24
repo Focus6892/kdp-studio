@@ -46,7 +46,7 @@ def test_assisted_flow_against_mock(tmp_path):
     store = PublishStore(tmp_path / "publish.sqlite")
     approver = ScriptedApprover(["", "", "d"])  # details OK, content OK, saved as draft (never 'p')
     try:
-        result = run_flow(book, "paperback", session, load_selectors(None), approver, store, start_url=start, book_path=str(work / "book.yaml"))
+        result = run_flow(book, "paperback", session, load_selectors(None), approver, store, start_url=start, book_path=str(work / "book.yaml"), dump_dir=tmp_path / "dom")
         page = session.page
         assert "pricing.html" in page.url
         params = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(page.url).query))
@@ -97,6 +97,8 @@ def test_assisted_flow_against_mock(tmp_path):
     # gates were asked in order and screenshots taken
     assert len(approver.prompts) == 3 and "never clicks Publish" in approver.prompts[-1]
     assert len(result.screenshots) == 3
+    assert {p.name for p in (tmp_path / "dom").iterdir()} == {"dom-details.json", "dom-details.md", "dom-content.json", "dom-content.md", "dom-pricing.json", "dom-pricing.md"}
+    assert "data-print-book-title" in (tmp_path / "dom" / "dom-details.md").read_text(encoding="utf-8")
     title_row = store.get_title(book.id, "paperback")
     assert title_row and title_row["status"] == "draft"
     store.close()

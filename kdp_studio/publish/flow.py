@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import Protocol
 
 from ..schema import Book
-from .browser import BrowserSession
+from ..util import write_json
+from .browser import BrowserSession, inventory_markdown
 from .checklist import artifacts_for, split_author
 from .selectors import expand
 from .store import PublishStore
@@ -70,9 +71,10 @@ class FlowResult:
 
 
 class Flow:
-    def __init__(self, book: Book, fmt: str, session: BrowserSession, selectors: dict, approver: Approver, store: PublishStore | None, book_path: str | None = None, resume: bool = False, tab_timeout_s: float = 60.0):
+    def __init__(self, book: Book, fmt: str, session: BrowserSession, selectors: dict, approver: Approver, store: PublishStore | None, book_path: str | None = None, resume: bool = False, tab_timeout_s: float = 60.0, dump_dir: Path | None = None):
         self.book, self.fmt, self.s, self.sel, self.approver, self.store = book, fmt, session, selectors, approver, store
         self.book_path = book_path
+        self.dump_dir = dump_dir  # structural DOM dump (ids/names/labels, never values) of every tab reached, for selector upkeep
         self.resume = resume  # continuing an existing KDP draft: no title is created, so no 'created' event
         self.tab_timeout_s = tab_timeout_s  # how long to wait for KDP to show the next tab before asking the human
         self.res = FlowResult()
@@ -124,6 +126,18 @@ class Flow:
             if time.time() >= deadline:
                 return False
             time.sleep(0.5)
+
+    def _dump(self, name: str) -> None:
+        """Save the tab's form structure next to the screenshots so selectors can be fixed from a real run."""
+        if self.dump_dir is None:
+            return
+        try:
+            inv = self.s.inventory()
+            self.dump_dir.mkdir(parents=True, exist_ok=True)
+            write_json(self.dump_dir / f"dom-{name}.json", inv)
+            (self.dump_dir / f"dom-{name}.md").write_text(inventory_markdown(inv), encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001 - never let bookkeeping stop the flow
+            log.info("dom dump %s failed: %s", name, str(exc).splitlines()[0][:120])
 
     def _reach(self, group: str, label: str) -> bool:
         """Wait for a tab's markers. When KDP stays put (disabled button, validation message), ask the human up
@@ -395,6 +409,7 @@ class Flow:
             self._wait_access()
             self.create_title()
             self._wait_access()
+            self._dump("details")
 
             self.fill_details()
             self._shot("details")
@@ -409,6 +424,7 @@ class Flow:
             if content_ok and self.store is not None:
                 self.store.upsert_title(self.book.id, self.fmt, "draft", title=self.book.metadata.full_title)
             if content_ok:
+                self._dump("content")
                 self.fill_content()
                 self._shot("content")
                 self._gate(self._summary("Content") + "\nWait for KDP to finish processing both uploads; fill anything listed above by hand; tick 'I confirm that my answers are accurate' in the AI block; open 'Launch Previewer' and approve it. Then [Enter] = click 'Save and Continue', q = stop:")
@@ -419,6 +435,7 @@ class Flow:
             if not content_ok:
                 self._skip_tab("pricing", "Rights & Pricing")
             if pricing_ok:
+                self._dump("pricing")
                 self.fill_pricing()
                 self._shot("pricing")
             for _ in range(3):
@@ -466,5 +483,5 @@ class Flow:
         return "\n".join(lines)
 
 
-def run_flow(book: Book, fmt: str, session: BrowserSession, selectors: dict, approver: Approver, store: PublishStore | None = None, start_url: str | None = None, book_path: str | None = None, resume: bool = False, tab_timeout_s: float = 60.0) -> FlowResult:
-    return Flow(book, fmt, session, selectors, approver, store, book_path, resume=resume, tab_timeout_s=tab_timeout_s).run(start_url)
+def run_flow(book: Book, fmt: str, session: BrowserSession, selectors: dict, approver: Approver, store: PublishStore | None = None, start_url: str | None = None, book_path: str | None = None, resume: bool = False, tab_timeout_s: float = 60.0, dump_dir: Path | None = None) -> FlowResult:
+    return Flow(book, fmt, session, selectors, approver, store, book_path, resume=resume, tab_timeout_s=tab_timeout_s, dump_dir=dump_dir).run(start_url)
