@@ -99,7 +99,7 @@ def new_coloring_book(root: Path, folder: str, title: str, author: str, theme: s
             "source": source,
             "cleanup": {"threshold": 128, "min_line_px": 3, "despeckle": 1, "art_margin_in": 0.5},
             "dedupe": {"enabled": True, "max_distance": 10, "library": "library/image_hashes.json"},
-            "qa": {"heuristic": True, "claude": False},
+            "qa": {"heuristic": True, "claude": False, **({"max_tiny_white": 0.2} if provider == "local" else {})},  # SD1.5 + LoRA draws denser than FLUX
         },
         "cover": {"art": {"provider": "placeholder", "seed": 11}, "palette": {"background": "#FBF3E4", "accent": "#C94C4C", "text": "#2B2B2B", "title_text": "#FFFFFF"},
                   "back_blurb": f"{images} {theme} designs with thick, forgiving outlines and large shapes, each on its own page with a blank back.",

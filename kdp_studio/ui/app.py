@@ -279,6 +279,8 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
         cmd = [sys.executable, "-X", "utf8", "-m", "kdp_studio", "build", entry["path"]]
         if request.form.get("images"):
             cmd += ["--images", request.form["images"]]
+        if request.form.get("reuse_raw"):
+            cmd.append("--reuse-raw")
         job_id = jobs.start(f"build {entry['folder']}", cmd, book_idx=idx)
         return redirect(url_for("job", job_id=job_id))
 

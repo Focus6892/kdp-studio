@@ -15,7 +15,7 @@ import numpy as np
 from PIL import Image, ImageFilter
 
 from ..schema import QAOptions
-from .cleanup import ink_ratio
+from .cleanup import component_areas, ink_ratio
 
 log = logging.getLogger(__name__)
 
@@ -47,7 +47,47 @@ def heuristic_qa(art: Image.Image, opts: QAOptions) -> QAResult:
     if solid > opts.max_solid_black:
         reasons.append(f"large solid black areas ({solid:.3%} of page after erosion)")
 
+    # Busy, textured pages (stippling, foliage, crowd scenes) shatter into thousands of ink pieces after cleanup; a
+    # bold-and-easy drawing is a few dozen connected strokes. Measured 2026-10-25 on 30 FLUX pages: 20-180 pieces.
+    stats = fragmentation(art)
+    if stats is not None:
+        pieces, frag = stats
+        if pieces > opts.max_components:
+            reasons.append(f"too busy ({pieces} separate ink pieces > {opts.max_components})")
+        if frag > opts.max_fragment_ink:
+            reasons.append(f"fragmented lines ({frag:.0%} of the ink is in tiny pieces > {opts.max_fragment_ink:.0%})")
+    # Dense foliage, stippling and shading leave most of the drawing as cells too small to color. Measured 2026-10-25:
+    # 30 Cloudflare FLUX bold-and-easy pages <= 4% of the page; the 8 visibly over-detailed SD1.5 pages 10-19%.
+    tiny = tiny_white_share(art)
+    if tiny is not None and tiny > opts.max_tiny_white:
+        reasons.append(f"too detailed to color ({tiny:.0%} of the page is tiny enclosed cells > {opts.max_tiny_white:.0%})")
+
     return QAResult(ok=not reasons, source="heuristic", reasons=reasons, ink_ratio=ratio)
+
+
+def tiny_white_share(art: Image.Image, cell_frac: float = 0.001) -> float | None:
+    """Share of the page covered by enclosed white cells smaller than `cell_frac` of the page (about 1 cm square on a
+    letter page). The largest white region is the outer background and is left out. None without scipy."""
+    mask = np.asarray(art) < 128
+    areas = component_areas(~mask)
+    if areas is None:
+        return None
+    if len(areas) <= 1:
+        return 0.0
+    inner = np.sort(areas)[:-1]
+    return float(inner[inner < cell_frac * mask.size].sum() / mask.size)
+
+
+def fragmentation(art: Image.Image) -> tuple[int, float] | None:
+    """(number of separate ink pieces, share of ink in pieces smaller than 0.05% of the page); None without scipy."""
+    mask = np.asarray(art) < 128
+    areas = component_areas(mask)
+    if areas is None:
+        return None
+    if len(areas) == 0:
+        return 0, 0.0
+    tiny = areas < max(1, int(0.0005 * mask.size))
+    return int(len(areas)), float(areas[tiny].sum() / areas.sum())
 
 
 QA_SCHEMA = {

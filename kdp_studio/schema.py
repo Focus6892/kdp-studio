@@ -113,11 +113,13 @@ class ImageSource(BaseModel):
 class CleanupOptions(BaseModel):
     threshold: int = Field(128, ge=1, le=254)  # pixels darker than this become ink; 128 keeps diffusion-model gray shading out of the lines
     min_line_px: int = Field(3, ge=1, le=15)
-    despeckle: int = Field(1, ge=0, le=5)
+    despeckle: int = Field(1, ge=0, le=5)  # drop ink blobs smaller than about 3 source pixels per step (0 = keep everything)
     autocontrast: bool = True
     art_margin_in: float = Field(0.5, ge=0.25, le=2.0)
-    hollow_fills: bool = True  # solid black regions become outlines (colorable) instead of failing QA
+    close_gaps: bool = True  # bridge hairline breaks (about one source pixel) so strokes stay continuous
+    hollow_fills: bool = True  # large solid black regions become outlines (colorable) instead of failing QA
     hollow_border_frac: float = Field(0.006, ge=0.001, le=0.03)  # border kept around hollowed regions, as a fraction of the art width
+    hollow_min_core: int = Field(6, ge=1, le=30)  # only solid cores at least (border * this)^2 px are hollowed; smaller fills and dots stay solid
 
 
 class DedupeOptions(BaseModel):
@@ -136,6 +138,9 @@ class QAOptions(BaseModel):
     min_ink_ratio: float = Field(0.01, ge=0.0, le=1.0)
     max_ink_ratio: float = Field(0.30, ge=0.0, le=1.0)
     max_solid_black: float = Field(0.03, ge=0.0, le=0.5)
+    max_components: int = Field(400, ge=10, le=100000)  # separate ink pieces after cleanup; bold-and-easy pages have tens, noisy textures thousands
+    max_fragment_ink: float = Field(0.30, ge=0.0, le=1.0)  # share of ink sitting in small pieces (under 0.05% of the page each)
+    max_tiny_white: float = Field(0.10, ge=0.0, le=1.0)  # share of the page in enclosed white cells under 0.1% of the page (~1 cm): fine texture is not bold-and-easy
     reject_people: bool = True  # free local OWLv2 detector: people and nudity (model-generated pages only)
     people_threshold: float = Field(0.27, ge=0.05, le=0.95)  # calibrated: people >= 0.33, flowers-only <= 0.21
     content_model: str = "google/owlv2-base-patch16-ensemble"

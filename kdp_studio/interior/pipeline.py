@@ -44,7 +44,9 @@ def _parse_size(size: str) -> tuple[int, int]:
     return int(w), int(h)
 
 
-def build_coloring_interior(book: Book, image_limit: int | None = None) -> InteriorResult:
+def build_coloring_interior(book: Book, image_limit: int | None = None, reuse_raw: bool = False) -> InteriorResult:
+    """reuse_raw: keep build/raw and skip generation for every (page, attempt) whose raw file already exists, so a book can
+    be re-cleaned and re-laid-out after a cleanup/QA change without touching the GPU or an API (new attempts still generate)."""
     interior = book.interior
     if not isinstance(interior, ColoringInterior):
         raise TypeError("build_coloring_interior needs a coloring interior")
@@ -53,9 +55,11 @@ def build_coloring_interior(book: Book, image_limit: int | None = None) -> Inter
     raw_dir = ensure_dir(build / "raw")
     art_dir = ensure_dir(build / "art")
     pages_dir = ensure_dir(build / "pages")
-    for d in (raw_dir, art_dir, pages_dir):  # leftovers from an earlier build would be mistaken for this one's pages
+    for d in (art_dir, pages_dir) if reuse_raw else (raw_dir, art_dir, pages_dir):  # leftovers from an earlier build would be mistaken for this one's pages
         for old_file in d.glob("*.png"):
             old_file.unlink()
+    if reuse_raw:
+        log.info("reusing the raw images in %s; only new attempts are generated", raw_dir)
 
     n = min(interior.images, image_limit) if image_limit else interior.images
     prompts = build_prompts(interior, n)
@@ -85,7 +89,8 @@ def build_coloring_interior(book: Book, image_limit: int | None = None) -> Inter
         for attempt in range(interior.qa.max_retries + 1):
             raw_path = raw_dir / f"{p.index:03d}_{attempt}.png"
             try:
-                provider.generate(p.prompt, p.index, attempt, raw_path, gen_size)
+                if not (reuse_raw and raw_path.is_file()):
+                    provider.generate(p.prompt, p.index, attempt, raw_path, gen_size)
             except ProviderQuota as exc:  # the API is out of budget for today: stop here and keep what already passed
                 quota_hit = f"provider quota: {error_summary(exc)}"
                 log.error("page %d: %s - stopping the build, %d page(s) accepted so far", p.index, quota_hit, len(accepted))

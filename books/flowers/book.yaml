@@ -103,6 +103,7 @@ interior:
   qa:
     heuristic: true
     claude: false
+    max_tiny_white: 0.25  # SD1.5 + LoRA vẽ chi tiết hơn FLUX; nới ngưỡng để giữ đủ 30 trang đã vẽ (mặc định 0.10)
 cover:
   art:
     provider: placeholder

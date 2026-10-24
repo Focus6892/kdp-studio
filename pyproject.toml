@@ -18,6 +18,7 @@ dependencies = [
   "pypdf>=4.3",
   "ruamel.yaml>=0.18",
   "markdown>=3.5",
+  "scipy>=1.11",
 ]
 
 [project.optional-dependencies]

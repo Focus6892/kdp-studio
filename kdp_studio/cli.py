@@ -286,7 +286,7 @@ def cmd_build(args) -> int:
 
     if not args.skip_interior:
         if isinstance(book.interior, ColoringInterior):
-            result = build_coloring_interior(book, image_limit=args.images)
+            result = build_coloring_interior(book, image_limit=args.images, reuse_raw=getattr(args, 'reuse_raw', False))
             pages = result.total_pages
             print(f"Interior: {result.pdf_path} — {result.total_pages} pages, {result.image_pages} coloring pages")
             if result.rejected_images:
@@ -987,6 +987,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("build", help="build interior (+ EPUB for story books) + cover and run preflight")
     p.add_argument("book")
     p.add_argument("--images", type=int, help="limit the number of coloring pages (quick test builds)")
+    p.add_argument("--reuse-raw", action="store_true", help="coloring books: keep build/raw and only re-clean, re-QA and re-lay-out (no GPU/API unless a page needs a new attempt)")
     p.add_argument("--skip-interior", action="store_true")
     p.add_argument("--skip-cover", action="store_true")
     p.add_argument("--pages", type=int, help="page count when skipping the interior")
