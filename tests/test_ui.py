@@ -1,5 +1,6 @@
 """The local web UI, driven through Flask's test client (no server, no browser)."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -86,3 +87,45 @@ def test_settings_backup_accounts_and_unblock(client, tmp_path, monkeypatch):
     r = client.post("/settings/remove", data={"provider": "cloudflare", "n": "2"}, follow_redirects=True)
     assert r.status_code == 200 and "Tài khoản 2" not in r.get_data(as_text=True)
     assert client.post("/settings/remove", data={"provider": "cloudflare", "n": "1"}).status_code == 400
+
+
+def test_build_job_page_shows_the_book_progress(client):
+    import sys
+
+    jobs = client.application.extensions["jobs"]
+    job_id = jobs.start("build test", [sys.executable, "-c", "print('hello')"], book_idx=0)
+    html = client.get(f"/jobs/{job_id}").get_data(as_text=True)
+    assert "Tiến trình tạo ruột" in html and "/book/0/progress" in html
+    plain = jobs.start("image-test", [sys.executable, "-c", "print('x')"])
+    assert "Tiến trình tạo ruột" not in client.get(f"/jobs/{plain}").get_data(as_text=True)
+
+
+def test_add_pick_remove_book_dirs_and_open_folder(client, tmp_path, monkeypatch):
+    import kdp_studio.ui.app as app_module
+    from kdp_studio.bookgen import new_coloring_book
+
+    ext = tmp_path / "elsewhere"
+    new_coloring_book(ext, "ext-book", "External Book", "Mia", "cats", provider="placeholder", subjects=["a cat"])
+    r = client.post("/books/add-dir", data={"path": str(ext)}, follow_redirects=True)
+    page = r.get_data(as_text=True)
+    assert r.status_code == 200 and "External Book" in page and "Đã thêm" in page and "1 sách" in page
+    saved = tmp_path / "state" / "book_dirs.json"
+    assert json.loads(saved.read_text(encoding="utf-8")) == [str(ext.resolve())]  # remembered for the next start
+    client.post("/books/add-dir", data={"path": str(ext)})  # same folder again is not duplicated
+    assert json.loads(saved.read_text(encoding="utf-8")) == [str(ext.resolve())]
+    assert "không có book.yaml" in client.post("/books/add-dir", data={"path": str(tmp_path)}, follow_redirects=True).get_data(as_text=True)
+    other = tmp_path / "picked"
+    new_coloring_book(other, "picked-book", "Picked Book", "Mia", "dogs", provider="placeholder", subjects=["a dog"])
+    monkeypatch.setattr(app_module, "_pick_folder", lambda: str(other))  # the native dialog is stubbed
+    assert "Picked Book" in client.post("/books/pick-dir", follow_redirects=True).get_data(as_text=True)
+    opened = []
+    monkeypatch.setattr(app_module, "_open_in_file_manager", lambda p: opened.append(Path(p)))
+    books = discover_books([ROOT / "examples", ext, other])
+    idx = next(i for i, b in enumerate(books) if b.get("id") == "cb-ext-book-001")
+    assert client.post(f"/book/{idx}/open-folder").status_code == 302 and opened[0].resolve() == (ext / "ext-book").resolve()
+    queue_page = client.get("/queue").get_data(as_text=True)
+    assert f"/book/{idx}" in queue_page and "mở trang sách" in queue_page
+    r = client.post("/books/remove-dir", data={"path": str(ext)}, follow_redirects=True)
+    assert "External Book" not in r.get_data(as_text=True) and "Picked Book" in r.get_data(as_text=True)
+    assert "mặc định" in client.post("/books/remove-dir", data={"path": str(ROOT / "examples")}, follow_redirects=True).get_data(as_text=True)
+

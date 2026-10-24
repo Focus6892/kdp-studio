@@ -52,7 +52,10 @@ class QuotaAfterFirstPage:
         return self.inner.generate(prompt, index, attempt, out_path, size)
 
 
-def test_build_stops_at_quota_and_keeps_accepted_pages(tmp_path, monkeypatch):
+def test_build_stops_at_quota_and_keeps_accepted_pages(tmp_path, monkeypatch, caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger='kdp_studio.interior.pipeline')
     data = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
     data["interior"]["images"] = 4
     data["interior"]["dedupe"]["library"] = str(tmp_path / "hashes.json")
@@ -62,6 +65,7 @@ def test_build_stops_at_quota_and_keeps_accepted_pages(tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline, "make_provider", lambda *a, **k: QuotaAfterFirstPage())
     result = pipeline.build_coloring_interior(book)
     assert result.image_pages == 1  # page 0 passed, the quota hit on page 1 stopped the rest without 3 retries each
+    assert any('page 1/4 done' in r.message for r in caplog.records) and any('1/4 accepted' in r.message for r in caplog.records)  # progress lines for the job log
     manifest = json.loads((tmp_path / "build" / "interior_manifest.json").read_text(encoding="utf-8"))
     assert [r["index"] for r in manifest["rejected"]] == [1, 2, 3]
     assert all(r["reasons"] == [f"provider quota: {SUMMARY}"] for r in manifest["rejected"])

@@ -13,11 +13,24 @@
 <td>{% if b.interior %}<span class="ok">ruột</span>{% else %}<span class="muted">ruột</span>{% endif %} {% if b.cover %}<span class="ok">bìa</span>{% else %}<span class="muted">bìa</span>{% endif %} {% if b.ebook %}<span class="ok">epub</span>{% endif %}</td>
 <td>{% if b.preflight == 'PASS' %}<span class="ok">PASS</span>{% elif b.preflight %}<span class="bad">{{ b.preflight }}</span>{% else %}<span class="muted">chưa</span>{% endif %}</td>
 <td>{% for f in b.formats or [] %}{% set t = titles.get((b.id, f)) %}{% if t %}<div>{{ f }}: <b>{{ t.status }}</b>{% if t.asin %} {{ t.asin }}{% endif %}</div>{% endif %}{% endfor %}</td>
-<td>{% if not b.error %}<form class="inline" method="post" action="{{ url_for('build', idx=loop.index0) }}"><button class="small">Build</button></form>{% endif %}</td>
+<td style="white-space:nowrap">{% if not b.error %}<a class="btn small secondary" href="{{ url_for('book', idx=loop.index0) }}" style="padding:4px 8px;font-size:13px">Mở</a> <form class="inline" method="post" action="{{ url_for('open_folder', idx=loop.index0) }}"><button class="small secondary" title="{{ b.path }}">Thư mục</button></form> <form class="inline" method="post" action="{{ url_for('build', idx=loop.index0) }}"><button class="small">Build</button></form>{% endif %}</td>
 </tr>
 {% endfor %}
 </table>
-<p class="muted">Thư mục đang quét: {% for d in dirs %}<code>{{ d }}</code> {% endfor %} — thêm thư mục khác bằng <code>kdp ui --books D:\path</code>.</p>
+</div>
+<div class="card" id="dirs"><h2>Thư mục sách</h2>
+{% if message %}<p><b>{{ message }}</b></p>{% endif %}
+<table><tr><th>Thư mục</th><th>Số sách</th><th></th></tr>
+{% for d in dirs %}<tr><td><code>{{ d }}</code></td><td>{{ dir_counts.get(d|string, 0) }}</td>
+<td>{% if d|string in extra_dirs %}<form class="inline" method="post" action="{{ url_for('remove_dir') }}"><input type="hidden" name="path" value="{{ d }}"><button class="small secondary">Bỏ khỏi danh sách</button></form>{% else %}<span class="muted">mặc định</span>{% endif %}</td></tr>{% endfor %}
+</table>
+<form method="post" action="{{ url_for('add_dir') }}" style="margin-top:10px">
+<label>Nạp sách có sẵn từ thư mục bất kỳ (chứa <code>book.yaml</code>, hoặc thư mục cha chứa nhiều sách)<br>
+<input type="text" name="path" placeholder="D:\sach-cua-toi  hoặc  D:\sach-cua-toi\ocean-animals" style="width:min(520px,95%)"></label>
+<button class="small">Thêm thư mục</button>
+<button class="small secondary" formaction="{{ url_for('pick_dir') }}">Chọn thư mục…</button>
+</form>
+<p class="muted">Thư mục đã thêm được nhớ trong <code>state/book_dirs.json</code> nên lần mở sau vẫn còn; sách trong đó dùng được mọi chức năng (Build, Gợi ý, Hàng đợi, publish) như sách trong dự án. Dòng lệnh tương đương: <code>kdp ui --books D:\path</code>.</p>
 </div>
 <div class="grid">
 <div class="card"><h2>Quota KDP tuần này</h2>

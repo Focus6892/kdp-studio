@@ -39,9 +39,10 @@ class Jobs:
         self._jobs: dict[str, dict] = {}
         self._lock = threading.Lock()
 
-    def start(self, title: str, cmd: list[str]) -> str:
+    def start(self, title: str, cmd: list[str], book_idx: int | None = None) -> str:
         job_id = uuid.uuid4().hex[:8]
-        job = {"id": job_id, "title": title, "cmd": cmd, "started": dt.datetime.now().strftime("%H:%M:%S"), "status": "running", "log": [], "returncode": None}
+        job = {"id": job_id, "title": title, "cmd": cmd, "started": dt.datetime.now().strftime("%H:%M:%S"), "status": "running", "log": [], "returncode": None,
+               "book_idx": book_idx}  # a build job shows that book's progress bar (pages done, thumbnails) above its log
         with self._lock:
             self._jobs[job_id] = job
 
@@ -125,10 +126,49 @@ def _spawn_console(args: list[str]) -> str:
     return " ".join(cmd)
 
 
+def _pick_folder() -> str | None:
+    """Native folder dialog on this machine (the UI runs locally) through tkinter; None when cancelled."""
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    try:
+        return filedialog.askdirectory(title="Chọn thư mục chứa book.yaml (hoặc thư mục cha chứa nhiều sách)", mustexist=True) or None
+    finally:
+        root.destroy()
+
+
+def _open_in_file_manager(folder: Path) -> None:
+    if sys.platform.startswith("win"):
+        os.startfile(str(folder))  # noqa: S606 - a local folder the user chose
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", str(folder)])
+    else:
+        subprocess.Popen(["xdg-open", str(folder)])
+
+
 def create_app(book_dirs: list[Path] | None = None) -> Flask:
     app = Flask(__name__, template_folder=str(Path(__file__).parent / "templates"))
     dirs = book_dirs or [p for p in (project_root() / "examples", project_root() / "books") if p.is_dir()]
+    dirs_file = data_path("state", "book_dirs.json")  # folders added from the UI, remembered across restarts
+    extra_dirs: list[str] = []
+    if dirs_file.is_file():
+        try:
+            extra_dirs = [d for d in json.loads(dirs_file.read_text(encoding="utf-8")) if isinstance(d, str)]
+        except ValueError:
+            extra_dirs = []
+    for d in extra_dirs:
+        if Path(d).is_dir() and Path(d) not in dirs:
+            dirs.append(Path(d))
+
+    def save_dirs() -> None:
+        dirs_file.parent.mkdir(parents=True, exist_ok=True)
+        dirs_file.write_text(json.dumps(extra_dirs, indent=2, ensure_ascii=False), encoding="utf-8")
+
     jobs = Jobs()
+    app.extensions["jobs"] = jobs  # tests and other code can start or inspect jobs
     store_path = data_path("publishing", "publish.sqlite")
     runs_dir = data_path("publishing", "runs")
     app.config["BOOK_DIRS"] = dirs
@@ -159,7 +199,64 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
             queued = s.queue_list("queued")
         finally:
             s.close()
-        return render_template("index.html", books=books(), quota=quota, titles=titles, keys=key_status(), queued=len(queued), jobs=jobs.all()[:5], dirs=dirs)
+        items = books()
+        resolved = [(d, str(d.resolve())) for d in dirs]
+        counts = {str(d): sum(1 for b in items if str(Path(b["path"]).resolve()).startswith(r + os.sep)) for d, r in resolved}
+        return render_template("index.html", books=items, quota=quota, titles=titles, keys=key_status(), queued=len(queued), jobs=jobs.all()[:5], dirs=dirs,
+                               extra_dirs=set(extra_dirs), dir_counts=counts, message=request.args.get("m"))
+
+    def _add_book_dir(raw: str):
+        raw = raw.strip().strip('"')
+        if not raw:
+            return redirect(url_for("index", m="Chưa nhập đường dẫn thư mục") + "#dirs")
+        p = Path(raw).expanduser()
+        if p.is_file() and p.name == "book.yaml":
+            p = p.parent
+        if not p.is_dir():
+            return redirect(url_for("index", m=f"Không thấy thư mục {raw}") + "#dirs")
+        found = discover_books([p])
+        if not found:
+            return redirect(url_for("index", m=f"{p} không có book.yaml (trực tiếp hoặc trong thư mục con)") + "#dirs")
+        key = str(p.resolve())
+        if key not in extra_dirs and p.resolve() not in [d.resolve() for d in dirs]:
+            extra_dirs.append(key)
+            dirs.append(Path(key))
+            save_dirs()
+        bad = [b for b in found if b.get("error")]
+        return redirect(url_for("index", m=f"Đã thêm {p}: {len(found)} sách" + (f", {len(bad)} lỗi book.yaml" if bad else "")) + "#dirs")
+
+    @app.post("/books/add-dir")
+    def add_dir():
+        return _add_book_dir(request.form.get("path", ""))
+
+    @app.post("/books/pick-dir")
+    def pick_dir():
+        try:
+            chosen = _pick_folder()
+        except Exception as exc:  # noqa: BLE001
+            return redirect(url_for("index", m=f"Không mở được hộp thoại chọn thư mục ({str(exc)[:80]}); gõ đường dẫn vào ô bên cạnh") + "#dirs")
+        return _add_book_dir(chosen) if chosen else redirect(url_for("index") + "#dirs")
+
+    @app.post("/books/remove-dir")
+    def remove_dir():
+        raw = request.form.get("path", "").strip()
+        key = str(Path(raw).resolve()) if raw else ""
+        if key in extra_dirs:
+            extra_dirs.remove(key)
+            dirs[:] = [d for d in dirs if str(d.resolve()) != key]
+            save_dirs()
+            return redirect(url_for("index", m=f"Đã bỏ {raw} khỏi danh sách (không xoá file nào)") + "#dirs")
+        return redirect(url_for("index", m="Thư mục này không bỏ được (mặc định của dự án)") + "#dirs")
+
+    @app.post("/book/<int:idx>/open-folder")
+    def open_folder(idx: int):
+        entry, _ = book_at(idx)
+        folder = Path(entry["path"]).parent
+        try:
+            _open_in_file_manager(folder)
+        except Exception as exc:  # noqa: BLE001
+            return redirect(url_for("index", m=f"Không mở được {folder}: {str(exc)[:80]}"))
+        return redirect(request.referrer or url_for("book", idx=idx))
 
     @app.get("/book/<int:idx>")
     def book(idx: int):
@@ -182,7 +279,7 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
         cmd = [sys.executable, "-X", "utf8", "-m", "kdp_studio", "build", entry["path"]]
         if request.form.get("images"):
             cmd += ["--images", request.form["images"]]
-        job_id = jobs.start(f"build {entry['folder']}", cmd)
+        job_id = jobs.start(f"build {entry['folder']}", cmd, book_idx=idx)
         return redirect(url_for("job", job_id=job_id))
 
     @app.post("/book/<int:idx>/image-test")
@@ -281,7 +378,7 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
         j = jobs.get(job_id)
         if j is None:
             abort(404)
-        return render_template("job.html", job=j)
+        return render_template("job.html", job=j, idx=j.get("book_idx"))
 
     @app.get("/jobs/<job_id>/log")
     def job_log(job_id: str):

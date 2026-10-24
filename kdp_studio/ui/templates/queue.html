@@ -5,13 +5,14 @@
 <div class="card"><h2>Chọn sách để đưa vào hàng đợi</h2>
 <form method="post" action="{{ url_for('queue_add') }}">
 <table><tr><th></th><th>Sách</th><th>Build</th><th>Định dạng có</th></tr>
-{% for b in books if not b.error %}
+{% for b in books %}{% if not b.error %}
 <tr><td><input type="checkbox" name="books" value="{{ b.path }}" {% if not b.interior %}title="chưa build"{% endif %}></td>
-<td><b>{{ b.title }}</b><div class="muted">{{ b.id }}</div></td>
+<td><a href="{{ url_for('book', idx=loop.index0) }}"><b>{{ b.title }}</b></a><div class="muted">{{ b.id }} · <a href="{{ url_for('book', idx=loop.index0) }}">mở trang sách</a></div></td>
 <td>{% if b.interior and b.cover %}<span class="ok">sẵn sàng</span>{% else %}<span class="warn">chưa build</span>{% endif %}</td>
 <td>{% for f in b.formats %}<span class="pill">{{ f }}</span>{% endfor %}</td></tr>
-{% endfor %}
+{% endif %}{% endfor %}
 </table>
+<p class="muted">Chưa thấy sách của bạn? <a href="{{ url_for('index') }}#dirs">Nạp thêm thư mục sách</a> ở trang Sách (thư mục bất kỳ có book.yaml).</p>
 <p><label>Định dạng <select name="fmt">{% for f in formats %}<option value="{{ f }}">{{ f }}</option>{% endfor %}</select></label>
 <label>Ưu tiên (1 = trước) <input type="number" name="priority" value="5" min="1" max="99" style="width:60px"></label>
 <button>Thêm vào hàng đợi</button></p>

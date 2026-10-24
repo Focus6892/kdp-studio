@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -74,7 +75,10 @@ def build_coloring_interior(book: Book, image_limit: int | None = None) -> Inter
     accepted: list[AcceptedPage] = []
     rejected: list[RejectedPage] = []
     quota_hit: str | None = None
+    retries_total = 0
+    t_build = time.monotonic()
     for pi, p in enumerate(prompts):
+        t_page = time.monotonic()
         reasons_all: list[str] = []
         qa_log: list[dict] = []
         done = False
@@ -93,6 +97,7 @@ def build_coloring_interior(book: Book, image_limit: int | None = None) -> Inter
             except ProviderError as exc:  # one refused/failed request (moderation, 5xx after retries) costs one attempt, not the book
                 log.warning("page %d attempt %d: %s", p.index, attempt, str(exc).splitlines()[0][:200])
                 reasons_all.append(f"attempt {attempt}: provider error: {str(exc).splitlines()[0][:160]}")
+                retries_total += 1
                 continue
             with Image.open(raw_path) as src:
                 art = prepare_art(src, art_box, interior.cleanup)
@@ -132,11 +137,13 @@ def build_coloring_interior(book: Book, image_limit: int | None = None) -> Inter
             if reasons:
                 log.info("page %d attempt %d rejected: %s", p.index, attempt, "; ".join(reasons))
                 reasons_all.extend(f"attempt {attempt}: {r}" for r in reasons)
+                retries_total += 1
                 continue
 
             art_path = art_dir / f"{p.index:03d}.png"
             art.save(art_path, "PNG")
             accepted.append(AcceptedPage(p.index, p.prompt, art_path, desc, attempt + 1, qa_log))
+            log.info("page %d/%d done in %.0f s (attempt %d, %d retries so far, provider %s)", len(accepted), n, time.monotonic() - t_page, attempt + 1, retries_total, provider.name)
             done = True
             break
         if not done:
@@ -145,6 +152,8 @@ def build_coloring_interior(book: Book, image_limit: int | None = None) -> Inter
             rejected.extend(RejectedPage(q.index, q.prompt, [quota_hit]) for q in prompts[pi + 1:])
             break
 
+    log.info("interior images: %d/%d accepted, %d rejected, %d retries, %.1f min, provider %s", len(accepted), n, len(rejected), retries_total,
+             (time.monotonic() - t_build) / 60, provider.describe() if hasattr(provider, "describe") else provider.name)
     if not accepted:
         raise RuntimeError(quota_hit or "No page passed QA/dedupe; nothing to lay out")
 

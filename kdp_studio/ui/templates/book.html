@@ -10,6 +10,7 @@
 {% if is_coloring %}<form method="post" action="{{ url_for('image_test', idx=idx) }}" style="margin-top:8px"><label>Thử provider <select name="provider">{% for p in providers %}<option value="{{ p }}" {% if p == e.provider %}selected{% endif %}>{{ p }}</option>{% endfor %}</select></label> <label>số trang <input type="number" name="n" value="3" min="1" max="12" style="width:60px"></label> <button class="secondary">Image test</button></form>{% endif %}
 {% if art.manuscript %}<p class="muted">Ruột: <a href="{{ url_for('file_view', p=art.manuscript) }}">{{ art.manuscript }}</a></p>{% endif %}
 {% if art.cover %}<p class="muted">Bìa: <a href="{{ url_for('file_view', p=art.cover) }}">{{ art.cover }}</a></p>{% endif %}
+<form class="inline" method="post" action="{{ url_for('open_folder', idx=idx) }}"><button class="small secondary">Mở thư mục sách</button></form> <span class="muted">mở Explorer tại thư mục chứa book.yaml và build/</span>
 </div>
 <div class="card"><h2>Đăng lên KDP</h2>
 <form method="post" action="{{ url_for('publish_one', idx=idx) }}">
@@ -22,29 +23,7 @@
 </div>
 </div>
 {% if is_coloring %}
-<div class="card" id="progress-card"><h2>Tiến trình tạo ruột</h2>
-<div style="background:#eee;border-radius:8px;height:18px;overflow:hidden"><div id="bar" style="background:var(--ok);height:100%;width:0%"></div></div>
-<p id="progress-text" class="muted">đang đọc…</p>
-<div class="shots" id="thumbs"></div>
-<p id="progress-links"></p>
-</div>
-<script>
-async function poll(){
-  try {
-    const r = await fetch('{{ url_for("progress", idx=idx) }}'); const d = await r.json();
-    const pct = d.total ? Math.min(100, Math.round(100 * d.done / d.total)) : 0;
-    document.getElementById('bar').style.width = pct + '%';
-    document.getElementById('progress-text').textContent =
-      (d.total ? d.done + ' / ' + d.total + ' trang' : d.done + ' trang') + ' · ' + d.retries + ' lần sinh lại' +
-      (d.seconds_per_page ? ' · ~' + d.seconds_per_page + ' giây/trang' : '') + (d.updated ? ' · trang mới nhất ' + d.updated : '') +
-      (d.finished ? ' · ĐÃ XONG' : '');
-    document.getElementById('thumbs').innerHTML = d.thumbs.map(u => '<a href="' + u + '" target="_blank"><img src="' + u + '" style="max-width:140px"></a>').join('');
-    document.getElementById('progress-links').innerHTML = (d.pdf ? '<a class="btn" href="' + d.pdf + '" target="_blank">interior.pdf</a> ' : '') + (d.cover ? '<a class="btn secondary" href="' + d.cover + '" target="_blank">cover_wrap.pdf</a>' : '');
-    if (!d.finished) setTimeout(poll, 4000);
-  } catch (e) { document.getElementById('progress-text').textContent = 'mất kết nối với server (' + e.message + '), thử lại sau 5 giây…'; setTimeout(poll, 5000); }
-}  // a server restart must not freeze this box: keep polling until it answers again
-poll();
-</script>
+{% include "_progress.html" %}
 {% endif %}
 <div class="card"><h2>Checklist nhập tay ({{ fmt }}) {% for f in b.formats %}{% if f != fmt %}· <a href="{{ url_for('book', idx=idx, fmt=f) }}">{{ f }}</a>{% endif %}{% endfor %}</h2>
 <pre style="background:#fafafa;color:#222;border:1px solid var(--line)">{{ checklist }}</pre></div>

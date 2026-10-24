@@ -2,6 +2,7 @@
 {% block body %}
 <h1>{{ job.title }} <span id="status" class="warn">{{ job.status }}</span></h1>
 <p class="muted"><code>{{ job.cmd|join(' ') }}</code> · bắt đầu {{ job.started }} · <a href="{{ url_for('index') }}">về danh sách</a></p>
+{% if idx is not none %}{% include "_progress.html" %}{% endif %}
 <pre id="log">{{ job.log|join('\n') }}</pre>
 <script>
 const el = document.getElementById('log'), st = document.getElementById('status');
