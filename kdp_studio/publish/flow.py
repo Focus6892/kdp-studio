@@ -148,6 +148,9 @@ class Flow:
                 return True
             self._gate(f"The {label} tab is not on screen yet. Click 'Save and Continue' yourself (fix whatever KDP flags), wait for {label} to appear, then press Enter (q = stop):")
             timeout = min(timeout, 5)
+        # the tab may well be on screen with markers this tool does not know yet: keep its structure for selector upkeep
+        self._dump(f"{group}-unmatched")
+        self._shot(f"{group}-unmatched")
         self._skip_tab(group, label)
         return False
 
@@ -469,6 +472,8 @@ class Flow:
                 self._dump("pricing")
                 self.fill_pricing()
                 self._shot("pricing")
+            if not pricing_ok:
+                self._dump("final-page")  # whatever is on screen when the human takes over
             for _ in range(3):
                 ans = self._gate(
                     self._summary("Pricing")
