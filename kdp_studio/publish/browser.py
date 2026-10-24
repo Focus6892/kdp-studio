@@ -544,7 +544,9 @@ class BrowserSession:
                 try:
                     return bool(loc.evaluate(
                         """(el, v) => { if (![...el.options].some(o => o.value === v)) return false;
-                                         el.value = v; el.dispatchEvent(new Event('input', {bubbles: true}));
+                                         // React-controlled selects only notice the native setter + a bubbling change event
+                                         Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, v);
+                                         el.dispatchEvent(new Event('input', {bubbles: true}));
                                          el.dispatchEvent(new Event('change', {bubbles: true})); return true; }""",
                         val,
                     ))

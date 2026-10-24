@@ -67,12 +67,19 @@ DEFAULT_SELECTORS: dict = {
     # AI-generated content lives on the Content tab (verified 2026-10-23): radios name=has-ai-content
     # followed by three unnamed ARIA comboboxes (text, images, translations) that the flow fills by order.
     "ai": {
-        "ai_yes": ["input[name='has-ai-content'][value='yes']", "#data-{fmt}-ai-content-yes", "input[name*='ai_content'][value='true']", "input[name*='ai-content'][value='true']"],
-        "ai_no": ["input[name='has-ai-content'][value='no']", "#data-{fmt}-ai-content-no", "input[name*='ai_content'][value='false']", "input[name*='ai-content'][value='false']"],
+        "ai_yes": ["input[name='has-ai-content'][value='yes']", "#data-{fmt}-ai-content-yes", "input[name*='ai_content'][value='true']", "input[name*='ai-content'][value='true']",
+                   # eBook: unnamed ARIA radios next to the questionnaire selects (first = Yes, second = No); never a bare 'Yes' radio,
+                   # which would also match the adult-content question on Details
+                   "xpath=(//select[starts-with(@id,'generative-ai-questionnaire')]/ancestor::*[.//*[@role='radio']][1]//*[@role='radio'])[1]"],
+        "ai_no": ["input[name='has-ai-content'][value='no']", "#data-{fmt}-ai-content-no", "input[name*='ai_content'][value='false']", "input[name*='ai-content'][value='false']",
+                  "xpath=(//select[starts-with(@id,'generative-ai-questionnaire')]/ancestor::*[.//*[@role='radio']][1]//*[@role='radio'])[2]"],
+        # the block exists on a page only when one of these is present (guards against look-alike Yes/No radios elsewhere)
+        "block_markers": ["input[name='has-ai-content']", "#generative-ai-questionnaire-images", "#data-{fmt}-ai-content-yes", "select[name*='ai_content']"],
         # legacy <select> variants (older UI / eBook flow); the React comboboxes have no stable ids
-        "ai_text": ["#data-{fmt}-ai-content-text", "select[name*='ai_content'][name*='text']", "select[name*='ai-content'][name*='text']"],
-        "ai_images": ["#data-{fmt}-ai-content-images", "select[name*='ai_content'][name*='image']", "select[name*='ai-content'][name*='image']"],
-        "ai_translation": ["#data-{fmt}-ai-content-translation", "select[name*='ai_content'][name*='translat']", "select[name*='ai-content'][name*='translat']"],
+        # eBook Content (verified 2026-10-24): a React questionnaire with hidden native selects behind styled dropdowns
+        "ai_text": ["#generative-ai-questionnaire-text", "#data-{fmt}-ai-content-text", "select[name*='ai_content'][name*='text']", "select[name*='ai-content'][name*='text']"],
+        "ai_images": ["#generative-ai-questionnaire-images", "#data-{fmt}-ai-content-images", "select[name*='ai_content'][name*='image']", "select[name*='ai-content'][name*='image']"],
+        "ai_translation": ["#generative-ai-questionnaire-translations", "#data-{fmt}-ai-content-translation", "select[name*='ai_content'][name*='translat']", "select[name*='ai-content'][name*='translat']"],
         # 2026-10: KDP asks which AI tools were used (text inputs, placeholder 'e.g. DALL-E') and for a confirmation tick
         "ai_tools_input": ["input[placeholder*='DALL-E']", "input[aria-label*='AI tool']", "input[name*='ai-tool']", "input[name*='aiTool']"],
         "ai_confirm": ["label:has-text('I confirm that my answers are accurate')", "input[type='checkbox'][name*='confirm']", "[role='checkbox'][aria-label*='confirm']"],
@@ -82,10 +89,13 @@ DEFAULT_SELECTORS: dict = {
     "content": {
         "page_markers": ["input[name='isbn-type']", "#ink-paper-BW_WHITE", "button:has-text('Upload manuscript')", "#data-print-book-publisher-interior-file-upload",
                          # eBook Content tab (unverified guesses until probed)
-                         "button:has-text('Upload eBook manuscript')", "input[name*='drm']", "text=Digital Rights Management", "#data-ebook-publisher-file-upload"],
-        # eBook only: KDP requires a DRM answer (unverified candidates; the flow reports the field for hand entry when none matches)
-        "drm_yes": ["input[name='drm'][value='yes']", "input[name*='drm'][value='true']", "input[name*='drm'][value='YES']", "#drm-yes", "#data-ebook-drm-yes"],
-        "drm_no": ["input[name='drm'][value='no']", "input[name*='drm'][value='false']", "input[name*='drm'][value='NO']", "#drm-no", "#data-ebook-drm-no"],
+                         "input[name='data[is_drm]-radio']", "#data-assets-interior-file-upload-browse-button-announce", "text=Digital Rights Management"],
+        # eBook only (verified 2026-10-24, classic layout): DRM radios, and a consent box that appears once 'No' is chosen
+        "drm_yes": ["input[name='data[is_drm]-radio'][value='true']", "input[name*='drm'][value='true']", "#drm-yes"],
+        "drm_no": ["input[name='data[is_drm]-radio'][value='false']", "input[name*='drm'][value='false']", "#drm-no"],
+        "drm_no_consent": ["#data-non-drm-download-consent", "input[name*='non_drm_download_consent']"],
+        # eBook accessibility questionnaire ({value} = unknown|not_readable|partially_readable|readable)
+        "accessibility_images": ["input[name='data[accessibility][image_reading]'][value='{value}']"],
         "isbn_none": ["input[name='isbn-type'][value='NONE']", "label:has-text('Publish without an ISBN')"],
         "isbn_own": ["input[name='isbn-type'][value='OWNER']", "label:has-text('Add your own ISBN')"],
         "isbn_own_input": ["#owner-isbn", "input[name*='isbn']"],
@@ -105,14 +115,14 @@ DEFAULT_SELECTORS: dict = {
         "bleed_no": ["#bleed-no", "input[value='no-bleed']", "#data-print-book-bleed-no", "label:has-text('No Bleed')"],
         "finish_matte": ["#cover-finish-MATTE", "input[value='MATTE']", "#data-print-book-cover-finish-matte"],
         "finish_glossy": ["#cover-finish-GLOSSY", "input[value='GLOSSY']", "#data-print-book-cover-finish-glossy"],
-        "manuscript_button": ["button:has-text('Upload manuscript')", "button:has-text('Upload paperback manuscript')", "button:has-text('Upload eBook manuscript')"],
-        "manuscript_input": ["#data-print-book-publisher-interior-file-upload", "#data-ebook-publisher-file-upload", "input[type='file'][name*='interior']", "input[type='file'][name*='manuscript']"],
-        "cover_upload_choice": ["input[name='cover-choice'][value='UPLOAD']", "label:has-text('Upload a cover you already have')", "#data-print-book-publisher-cover-choice-accordion"],
-        "cover_button": ["button:has-text('Upload your cover file')", "button:has-text('Upload cover')"],
-        "cover_input": ["#data-print-book-publisher-cover-file-upload", "#data-ebook-publisher-cover-file-upload", "input[type='file'][name*='cover']"],
+        "manuscript_button": ["#data-assets-interior-file-upload-browse-button-announce", "button:has-text('Upload manuscript')", "button:has-text('Upload paperback manuscript')", "button:has-text('Upload eBook manuscript')"],
+        "manuscript_input": ["#data-assets-interior-file-upload-AjaxInput", "#data-print-book-publisher-interior-file-upload", "#data-ebook-publisher-file-upload", "input[type='file'][name*='interior']", "input[type='file'][name*='manuscript']"],
+        "cover_upload_choice": ["input[name='cover-choice'][value='UPLOAD']", "label:has-text('Upload a cover you already have')", "a:has-text('Upload a cover you already have')", "#data-print-book-publisher-cover-choice-accordion"],
+        "cover_button": ["#data-assets-cover-file-upload-browse-button-announce", "button:has-text('Upload your cover file')", "button:has-text('Upload cover')"],
+        "cover_input": ["#data-assets-cover-file-upload-AjaxInput", "#data-print-book-publisher-cover-file-upload", "#data-ebook-publisher-cover-file-upload", "input[type='file'][name*='cover']"],
         "cover_has_barcode": ["#publisher-barcode", "[role='checkbox']:has-text('my cover has a barcode')"],
         "upload_ok": ["text=Manuscript uploaded successfully", "text=Cover uploaded successfully", "text=uploaded successfully"],
-        "previewer": ["button:has-text('Launch Previewer')", "#print-previewer-button-announce", "#ebook-previewer-button-announce"],
+        "previewer": ["button:has-text('Launch Previewer')", "#digital-preview-announce", "#print-previewer-button-announce", "#ebook-previewer-button-announce"],
         "save_draft": ["button:has-text('Save as Draft')", "#save-announce"],
         "save_continue": ["button:has-text('Save and Continue')", "#save-and-continue-announce"],
     },

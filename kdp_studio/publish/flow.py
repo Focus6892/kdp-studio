@@ -194,6 +194,8 @@ class Flow:
     def fill_ai_disclosure(self) -> bool:
         """KDP's 'AI-Generated Content' block (on the Content tab at the time of writing; the flow
         tries it on every tab and fills it where it exists). Returns True when the block was found."""
+        if self.s.find(self._c("ai", "block_markers")) is None:
+            return False  # not on this tab (Details has look-alike Yes/No radios for adult content)
         if self.s.find(self._c("ai", "ai_yes")) is None and self.s.find(self._c("ai", "ai_no")) is None:
             return False
         disclosure = self.book.ai_disclosure()
