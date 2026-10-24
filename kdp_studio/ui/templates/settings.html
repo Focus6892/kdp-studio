@@ -2,23 +2,44 @@
 {% block body %}
 <h1>Cài đặt API key</h1>
 {% if message %}<div class="card"><b>{{ message }}</b></div>{% endif %}
-<div class="card"><p class="muted">Key được ghi vào <code>{{ env_file }}</code> (đã gitignore, không bao giờ đưa lên GitHub). Biến môi trường của shell được ưu tiên hơn file. Ô trống giữ nguyên giá trị cũ; chỉ hiện đầu và cuối key.</p></div>
-<form method="post" action="{{ url_for('settings_save') }}">
+<div class="card"><p class="muted">Key được ghi vào <code>{{ env_file }}</code> (đã gitignore, không bao giờ đưa lên GitHub). Biến môi trường của shell được ưu tiên hơn file. Chỉ hiện đầu và cuối key; bấm <b>Sửa</b> để nhập key mới, <b>Lưu</b> ghi riêng nền tảng đó.</p></div>
 {% for p in providers %}
+{% set complete = p.vars and p.present.values()|select|list|length == p.vars|length %}
 <div class="card" id="prov-{{ p.id }}">
-<h2>{{ p.name }} {% if p.optional %}<span class="pill">không bắt buộc</span>{% endif %}</h2>
+<h2>{{ p.name }} {% if p.optional %}<span class="pill">không bắt buộc</span>{% endif %}{% if complete %}<span class="pill" style="background:#dff3e3;color:var(--ok)">đã có key</span>{% endif %}</h2>
 <p class="muted">{{ p.free }}{% if p.url %} · <a href="{{ p.url }}" target="_blank" rel="noopener">Lấy key / tài khoản ↗</a>{% endif %}</p>
+{% if p.vars %}
+<form method="post" action="{{ url_for('settings_save') }}">
+<div id="summary-{{ p.id }}" {% if not complete %}hidden{% endif %}>
+  {% for v in p.vars %}<p><code>{{ v }}</code> <span class="ok">{{ p.masked[v] or 'đã có' }}</span></p>{% endfor %}
+</div>
+<div id="fields-{{ p.id }}" {% if complete %}hidden{% endif %}>
+  <ol class="muted" style="margin:4px 0 10px 18px">{% for s in p.steps %}<li>{{ s }}</li>{% endfor %}</ol>
+  {% for v in p.vars %}
+  <p><label><code>{{ v }}</code> {% if p.present[v] %}<span class="muted">hiện tại {{ p.masked[v] }}</span>{% endif %}<br>
+  <input type="password" name="{{ v }}" style="width:min(520px,95%)" placeholder="{% if p.present[v] %}để trống = giữ nguyên{% else %}dán key vào đây{% endif %}" autocomplete="off"></label></p>
+  {% endfor %}
+</div>
+<p>
+  <button type="button" class="small secondary" id="edit-{{ p.id }}" onclick="toggleEdit('{{ p.id }}')">{% if complete %}Sửa{% else %}Ẩn{% endif %}</button>
+  <button class="small" id="save-{{ p.id }}" {% if complete %}hidden{% endif %}>Lưu</button>
+  <button type="button" class="small secondary" onclick="checkProvider('{{ p.id }}')">Kiểm tra</button>
+  <span id="check-{{ p.id }}" class="muted"></span>
+</p>
+</form>
+{% else %}
 <ol class="muted" style="margin:4px 0 10px 18px">{% for s in p.steps %}<li>{{ s }}</li>{% endfor %}</ol>
-{% for v in p.vars %}
-<p><label><code>{{ v }}</code> {% if p.present[v] %}<span class="ok">đã có ({{ p.masked[v] }})</span>{% else %}<span class="muted">chưa có</span>{% endif %}<br>
-<input type="password" name="{{ v }}" style="width:min(520px,95%)" placeholder="{% if p.present[v] %}giữ nguyên{% else %}dán key vào đây{% endif %}" autocomplete="off"></label></p>
-{% endfor %}
-<p><button type="button" class="small secondary" onclick="checkProvider('{{ p.id }}')">Kiểm tra</button> <span id="check-{{ p.id }}" class="muted"></span></p>
+<p><span class="ok">không cần key</span></p>
+{% endif %}
 </div>
 {% endfor %}
-<div class="card"><button>Lưu tất cả vào .env</button></div>
-</form>
 <script>
+function toggleEdit(id){
+  const f = document.getElementById('fields-' + id), s = document.getElementById('summary-' + id), e = document.getElementById('edit-' + id), sv = document.getElementById('save-' + id);
+  const open = f.hidden;               // fields hidden -> open them for editing
+  f.hidden = !open; sv.hidden = !open; s.hidden = open;
+  e.textContent = open ? 'Ẩn' : 'Sửa';
+}
 async function checkProvider(id){
   const el = document.getElementById('check-' + id); el.textContent = 'đang kiểm tra…'; el.className = 'muted';
   try { const r = await fetch('{{ url_for("settings_check", provider="X") }}'.replace('X', id), {method: 'POST'}); const d = await r.json();
