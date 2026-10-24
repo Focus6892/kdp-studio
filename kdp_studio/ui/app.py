@@ -345,14 +345,16 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
                 total = None
         if total is None and isinstance(b.interior, ColoringInterior):
             total = b.interior.images
-        art = sorted((build / "art").glob("*.png"), key=lambda p: p.stat().st_mtime) if (build / "art").is_dir() else []
-        raw = list((build / "raw").glob("*.png")) if (build / "raw").is_dir() else []
+        # prompts.json is rewritten when a build starts: only files newer than it belong to the current build
+        since = (build / "prompts.json").stat().st_mtime - 1 if (build / "prompts.json").is_file() else 0
+        art = sorted((p for p in (build / "art").glob("*.png") if p.stat().st_mtime >= since), key=lambda p: p.stat().st_mtime) if (build / "art").is_dir() else []
+        raw = [p for p in (build / "raw").glob("*.png") if p.stat().st_mtime >= since] if (build / "raw").is_dir() else []
         seconds = None
         if len(art) >= 2:
             seconds = round((art[-1].stat().st_mtime - art[0].stat().st_mtime) / (len(art) - 1), 1)
         manifest = (build / "interior_manifest.json").is_file()
         pdf = build / "interior.pdf"
-        finished = manifest and pdf.is_file() and (not art or pdf.stat().st_mtime >= art[-1].stat().st_mtime)
+        finished = manifest and pdf.is_file() and pdf.stat().st_mtime >= since and (not art or pdf.stat().st_mtime >= art[-1].stat().st_mtime)
         return {
             "total": total, "done": len(art), "attempts": len(raw), "retries": max(0, len(raw) - len(art)), "seconds_per_page": seconds,
             "finished": bool(finished), "pdf": url_for("file_view", p=str(pdf)) if pdf.is_file() else None,
