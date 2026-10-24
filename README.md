@@ -160,7 +160,7 @@ python -m kdp_studio ui                     # mở http://127.0.0.1:8765 : sách
 python -m kdp_studio ui --books "D:\sach"   # quét thêm thư mục chứa <cuốn>/book.yaml
 ```
 
-Trang **Hàng đợi** cho phép tick nhiều cuốn, chọn định dạng và ưu tiên rồi "Chạy tựa kế tiếp còn quota": tool mở một cửa sổ console chạy `kdp publish next` để các cổng duyệt (Details, Content, Pricing) vẫn hiện cho bạn như khi chạy tay. Build và image-test chạy nền với log trực tiếp trong trình duyệt.
+Trang **Cài đặt** quản lý API key của các nền tảng (Cloudflare, OpenAI, Gemini, Stability, pollinations, Anthropic, Hugging Face): ghi vào `.env`, chỉ hiện đầu và cuối key, nút **Kiểm tra** gọi một lệnh rẻ để biết key có dùng được (Stability còn hiện số credit), kèm hướng dẫn từng bước và link lấy key; dòng lệnh tương đương `kdp keys --check` và `kdp keys --set TEN=gia_tri`. Trang **Tạo sách** sinh `book.yaml` mới trong `books/<thư mục>/` từ một form ngắn (tiêu đề, tác giả, chủ đề, số trang, khổ, nguồn ảnh, chủ đề từng trang) rồi đưa tới trang sách; ô **Tiến trình tạo ruột** trên trang sách hiện số trang đã xong trên tổng, số lần sinh lại, giây mỗi trang, ảnh thu nhỏ các trang mới nhất và liên kết PDF, cập nhật 4 giây một lần với bất kỳ build nào đang chạy. Trang **Hàng đợi** cho phép tick nhiều cuốn, chọn định dạng và ưu tiên rồi "Chạy tựa kế tiếp còn quota": tool mở một cửa sổ console chạy `kdp publish next` để các cổng duyệt (Details, Content, Pricing) vẫn hiện cho bạn như khi chạy tay. Build và image-test chạy nền với log trực tiếp trong trình duyệt.
 
 ## Chuyển sang máy khác và license
 
