@@ -53,6 +53,7 @@ Bảng đầy đủ và các đường dẫn nguồn nằm trong lịch sử phi
 | Pollinations ẩn danh | 0/3 qua QA: ảnh 630×940, watermark, mảng đen lớn |
 | local DreamShaper-8, prompt chung | bó hoa cúc rất đẹp (sau khi hạ ngưỡng làm sạch xuống 128), mandala quá rậm; ~70 s/trang |
 | local DreamShaper-8 + LoRA ColoringBookAF + subjects | 2/3 qua QA (cúc, tulip đẹp), 1 trang LoRA tự chèn người → QA loại, pipeline sinh lại |
+| **Cloudflare Workers AI FLUX schnell** (key miễn phí) | **3/3 qua QA, nét sạch đúng kiểu bold & easy, ~2,2 s/trang**, ảnh 1024×1024 JPEG được đặt vào khung trang; không thấy người trong 3 trang thử |
 
 Cần nhớ: giấy phép LoRA ColoringBookRedmond là "bespoke-lora-trained-license" (Civitai, allowCommercialUse=Rent) — xác nhận trước khi bán sách làm bằng LoRA này; DreamShaper-8 là openrail-m, cho phép thương mại với điều kiện sử dụng có trách nhiệm.
 

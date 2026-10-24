@@ -15,7 +15,7 @@ SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,60}$")
 
 # what to declare to KDP per image source (provenance.ai_tools); procedural sources are not AI
 AI_TOOLS = {
-    "local": ["Stable Diffusion 1.5 (DreamShaper-8) with ColoringBookRedmond LoRA"],
+    "local": ["Stable Diffusion 1.5 (DreamShaper-8) with ColoringBookRedmond LoRA"],  # provider local
     "cloudflare": ["FLUX.1 schnell via Cloudflare Workers AI"],
     "pollinations": ["FLUX via pollinations.ai"],
     "openai": ["gpt-image-1"],

@@ -75,7 +75,7 @@ interior:
     - "a wildflower meadow strip with six simple flowers and tall grass"
     - "a magnolia branch with three big open flowers"
     - "a mandala made of six large petals around a circle, bold and simple"
-  style_prompt: "ColoringBookAF, coloring book page, bold clean black outlines, simple shapes, large areas to color, no shading, no gray, pure white background, no text, no watermark, centered composition"
+  style_prompt: "coloring book page, bold clean black outlines, simple shapes, large areas to color, no shading, no gray, pure white background, no text, no watermark, centered composition"
   negative_prompt: "color, shading, gradients, gray fill, text, letters, numbers, watermark, signature, blurry, photo, person, woman, man, face, portrait, child, animal except the named one, tiny details, cross-hatching"
   audience: "adults and seniors, beginners, low vision"
   images: 30
@@ -84,12 +84,14 @@ interior:
   front_matter: [title, copyright, belongs_to, test_colors]
   back_matter: [thank_you, blank]
   source:
-    provider: local            # free, on your GPU: SD 1.5 (DreamShaper-8) + coloring-book LoRA; other options: spec (drawings/), placeholder, cloudflare, openai, google, stability
-    model: Lykon/dreamshaper-8
-    lora: "artificialguybr/coloringbook-redmond-1-5v-coloring-book-lora-for-liberteredmond-sd-1-5:ColoringBookRedmond15V-LiberteRedmond-ColoringBookAF.safetensors"
-    lora_scale: 0.8            # the LoRA's trigger word ColoringBookAF is in style_prompt
-    steps: 22                  # ~55 s per page on a GTX 1050 Ti
-    local_size: 512x768
+    provider: cloudflare       # free Workers AI FLUX schnell: ~2 s/page, 3/3 pages passed QA on 2026-10-24 (needs CF_ACCOUNT_ID + CF_API_TOKEN in .env)
+    # Free alternative on your own GPU (about 70 s/page, LoRA tends to add people -> the OWLv2 filter rejects them):
+    #   provider: local
+    #   model: Lykon/dreamshaper-8
+    #   lora: "artificialguybr/coloringbook-redmond-1-5v-coloring-book-lora-for-liberteredmond-sd-1-5:ColoringBookRedmond15V-LiberteRedmond-ColoringBookAF.safetensors"
+    #   lora_scale: 0.8          # its trigger word ColoringBookAF then belongs at the front of style_prompt
+    #   steps: 22
+    #   local_size: 512x768
     seed: 7
     size: 1024x1536
   cleanup:

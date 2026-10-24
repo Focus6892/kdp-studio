@@ -27,7 +27,7 @@ def test_discover_books_reads_both_examples():
     ids = {b.get("id") for b in books}
     assert {"co-bold-easy-flowers-001", "st-lantern-lane-001"} <= ids or len(books) >= 2
     flowers = next(b for b in books if b.get("type") == "coloring")
-    assert flowers["drawings"] >= 3 and flowers["provider"] in {"placeholder", "spec", "local"}
+    assert flowers["drawings"] >= 3 and flowers["provider"] in {"placeholder", "spec", "local", "cloudflare"}
 
 
 def test_pages_render_and_queue_selection_works(client):

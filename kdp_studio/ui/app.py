@@ -308,7 +308,8 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
     # ---------------------------------------------------------------- create a new coloring book
     @app.get("/create")
     def create_form():
-        return render_template("create.html", providers=["local", "spec", "placeholder", "cloudflare", "pollinations", "openai", "google", "stability"], default_provider="local", error=None)
+        default = "cloudflare" if key_status().get("cloudflare") else "local"  # free Workers AI when its key is set, else the GPU
+        return render_template("create.html", providers=["cloudflare", "local", "spec", "placeholder", "pollinations", "openai", "google", "stability"], default_provider=default, error=None)
 
     @app.post("/create")
     def create_book():
