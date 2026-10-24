@@ -85,6 +85,8 @@ def test_assisted_flow_against_mock(tmp_path):
     assert params["c.ai-yes"] == "yes"
     assert params["c.ai-images-value"] == "Many or all, with minimal or no editing"
     assert params["c.ai-text-value"] == "None" and params["c.ai-translation-value"] == "None"
+    assert params["c.ai-tool-0"] == "gpt-image-1" and params.get("c.ai-tool-1", "") == ""  # provenance.ai_tools typed into KDP's new field
+    assert "c.ai-confirm" not in params  # the accuracy confirmation is the human's tick, never the tool's
     # content page (React redesign structure)
     assert params["c.ink-paper-BW_WHITE"] == "BW_WHITE"
     assert params["c.trim-value"].startswith("8.5 x 11 in")

@@ -92,4 +92,5 @@ pricing:
 provenance:
   text: human
   interior_images: ai_generated
+  ai_tools: ["gpt-image-1"]       # named in KDP's AI disclosure ('Which tool(s) did you use'); match your real image provider
   cover_art: ai_generated

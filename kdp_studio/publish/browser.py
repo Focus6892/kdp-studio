@@ -69,6 +69,7 @@ class BrowserSession:
                 kw["args"] = ["--start-maximized"]
             try:
                 self._ctx = self._pw.chromium.launch_persistent_context(str(self.profile_dir), **kw)
+                self._ctx.set_default_timeout(8000)  # a control that refuses a click fails fast and gets reported, not a 30 s stall
                 self.channel_used = channel or "chromium"
                 break
             except Exception as exc:  # noqa: BLE001 - try the next browser channel
@@ -357,15 +358,42 @@ class BrowserSession:
             return True
         except Exception as exc:  # noqa: BLE001
             log.info("check failed: %s", str(exc).splitlines()[0][:120])
-        try:
-            el_id = loc.get_attribute("id")
-            if el_id:
-                lab = self.page.locator(f"label[for='{el_id}']")
-                if lab.count() > 0:
+        for attempt in ("label_for", "label_ancestor", "card", "dom_click"):
+            try:
+                if attempt == "label_for":
+                    el_id = loc.get_attribute("id")
+                    if not el_id:
+                        continue
+                    lab = self.page.locator(f"label[for='{el_id}']")
+                    if lab.count() == 0:
+                        continue
                     lab.first.click()
-                    return bool(loc.is_checked())
-        except Exception as exc:  # noqa: BLE001
-            log.info("label fallback failed: %s", str(exc).splitlines()[0][:120])
+                elif attempt == "label_ancestor":
+                    anc = loc.locator("xpath=ancestor::label[1]")
+                    if anc.count() == 0:
+                        continue
+                    anc.first.click()
+                elif attempt == "card":  # styled option cards: click the input's parent box
+                    loc.locator("xpath=..").first.click()
+                else:
+                    loc.evaluate("el => { el.click(); el.dispatchEvent(new Event('change', {bubbles: true})); }")
+                if loc.is_checked():
+                    return True
+            except Exception as exc:  # noqa: BLE001
+                log.info("check fallback %s failed: %s", attempt, str(exc).splitlines()[0][:120])
+        return False
+
+    def fill_nth(self, candidates: list[str], index: int, value: str) -> bool:
+        """Fill the index-th element (DOM order) of the first candidate that has more than `index` matches."""
+        for cand in candidates:
+            for scope in self._scopes():
+                try:
+                    loc = self._locator(scope, cand)
+                    if loc.count() > index:
+                        loc.nth(index).fill(value)
+                        return True
+                except Exception as exc:  # noqa: BLE001
+                    log.info("fill_nth failed: %s", str(exc).splitlines()[0][:120])
         return False
 
     def press(self, candidates: list[str], key: str) -> bool:

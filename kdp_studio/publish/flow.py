@@ -161,21 +161,33 @@ class Flow:
             return True
         # KDP words the scope options differently per category ("Entire work" / "Many or all" / "Some sections" /
         # "One or a few"); pick the broadest declared option, never "None", and leave the editing level to the human.
-        declared_needles = ["entire", "many or all", "all", "some", "one or a few"]
+        scope = self.book.ai_scope()  # e.g. a single AI cover is 'one or a few' images, AI interior pages 'many or all'
         categories = (("Text", "ai_text"), ("Images", "ai_images"), ("Translations", "ai_translation"))
         legacy_selects = self.s.find(self._c("ai", "ai_text")) is not None
         combos = [] if legacy_selects else [loc for loc, name in self.s.comboboxes() if "trim" not in name.lower()]
         for idx, (key, fld) in enumerate(categories):
             wants_ai = disclosure[key].startswith("AI-generated")
+            needles = scope[key]
             if legacy_selects:
-                ok = self.s.select(self._c("ai", fld), label_contains=declared_needles, exclude_contains="none") if wants_ai else self.s.select(self._c("ai", fld), label_contains="none")
+                ok = self.s.select(self._c("ai", fld), label_contains=needles, exclude_contains="none") if wants_ai else self.s.select(self._c("ai", fld), label_contains="none")
             elif idx < len(combos):
-                ok = self.s.choose_combobox(combos[idx], label_contains=declared_needles, exclude_contains="none") if wants_ai else self.s.choose_combobox(combos[idx], label_contains="none")
+                ok = self.s.choose_combobox(combos[idx], label_contains=needles, exclude_contains="none") if wants_ai else self.s.choose_combobox(combos[idx], label_contains="none")
             else:
                 ok = False
             if wants_ai:
-                self._record(ok, f"ai_{key.lower()}", "AI-generated (confirm scope and editing level yourself)")
-                self.res.notes.append(f"AI {key}: declared as AI-generated; confirm the scope and editing level that match your workflow.")
+                self._record(ok, f"ai_{key.lower()}", f"AI-generated, scope '{needles[0]}' (confirm the editing level yourself)")
+                self.res.notes.append(f"AI {key}: declared as AI-generated with scope '{needles[0]}'; check the editing level matches your workflow.")
+        # KDP also wants the tool names; the accuracy confirmation checkbox is a human attestation the tool never ticks
+        tools = self.book.provenance.ai_tools
+        inputs = self._c("ai", "ai_tools_input")
+        if self.s.find(inputs) is not None:
+            if tools:
+                done = all(self.s.fill_nth(inputs, i, name) for i, name in enumerate(tools[:3]))
+                self._record(done, "ai_tools", ", ".join(tools))
+            else:
+                self._record(False, "ai_tools", "type the AI tool name(s) in 'Which tool(s) did you use' (set provenance.ai_tools to automate)")
+        if self.s.find(self._c("ai", "ai_confirm")) is not None:
+            self.res.notes.append("Tick 'I confirm that my answers are accurate' yourself before Save and Continue.")
         return True
 
     def fill_details(self) -> None:
@@ -370,7 +382,7 @@ class Flow:
                 self.store.upsert_title(self.book.id, self.fmt, "draft", title=self.book.metadata.full_title)
             self.fill_content()
             self._shot("content")
-            self._gate(self._summary("Content") + "\nWait for KDP to finish processing both uploads, open 'Launch Previewer' and approve it yourself. Then [Enter] = click 'Save and Continue', q = stop:")
+            self._gate(self._summary("Content") + "\nWait for KDP to finish processing both uploads; fill anything listed above by hand; tick 'I confirm that my answers are accurate' in the AI block; open 'Launch Previewer' and approve it. Then [Enter] = click 'Save and Continue', q = stop:")
             if not self.s.click(self._c("content", "save_continue")):
                 self._gate("Click 'Save and Continue' yourself, then press Enter:")
 

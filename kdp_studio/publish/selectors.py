@@ -68,6 +68,9 @@ DEFAULT_SELECTORS: dict = {
         "ai_text": ["#data-{fmt}-ai-content-text", "select[name*='ai_content'][name*='text']", "select[name*='ai-content'][name*='text']"],
         "ai_images": ["#data-{fmt}-ai-content-images", "select[name*='ai_content'][name*='image']", "select[name*='ai-content'][name*='image']"],
         "ai_translation": ["#data-{fmt}-ai-content-translation", "select[name*='ai_content'][name*='translat']", "select[name*='ai-content'][name*='translat']"],
+        # 2026-10: KDP asks which AI tools were used (text inputs, placeholder 'e.g. DALL-E') and for a confirmation tick
+        "ai_tools_input": ["input[placeholder*='DALL-E']", "input[aria-label*='AI tool']", "input[name*='ai-tool']", "input[name*='aiTool']"],
+        "ai_confirm": ["label:has-text('I confirm that my answers are accurate')", "input[type='checkbox'][name*='confirm']", "[role='checkbox'][aria-label*='confirm']"],
     },
     # Content tab (React redesign, verified 2026-10-23 on a paperback draft). Trim size and the AI
     # dropdowns are custom comboboxes; uploads open the native file chooser from a button.

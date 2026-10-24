@@ -28,6 +28,7 @@ class Provenance(BaseModel):
     interior_images: Origin = "human"
     cover_art: Origin = "human"
     translation: Literal["none", "human", "ai_generated"] = "none"
+    ai_tools: list[str] = Field(default_factory=list)  # KDP (2026-10) asks which AI tools made the images/text, e.g. ["gpt-image-1"]
     notes: str | None = None
 
 
@@ -316,12 +317,29 @@ class Book(BaseModel):
                 "none": "None",
             }[origin]
 
-        return {
+        out = {
             "Did you use AI tools in creating texts, images and/or translations?": "Yes" if used_ai else "No",
             "Text": label(p.text),
             "Images": label(images),
             "Translations": label(p.translation),
         }
+        if used_ai:
+            scope = self.ai_scope()
+            if images == "ai_generated":
+                out["Images scope"] = scope["Images"][0] + (" (cover art only)" if p.interior_images != "ai_generated" else " (interior pages)")
+            if p.text == "ai_generated":
+                out["Text scope"] = scope["Text"][0]
+            out["AI tools"] = ", ".join(p.ai_tools) if p.ai_tools else "REQUIRED - type the tool names in KDP's 'Which tool(s) did you use' field"
+            out["Confirmation"] = "tick 'I confirm that my answers are accurate' yourself (KDP asks again whenever a file changes)"
+        return out
+
+    def ai_scope(self) -> dict[str, list[str]]:
+        """Needles (in preference order) for KDP's per-category scope dropdowns: how much of the work is AI-made.
+        A single AI cover is 'one or a few' images; AI interior pages are 'many or all'."""
+        p = self.provenance
+        images = ["many or all", "entire", "all", "many"] if p.interior_images == "ai_generated" else ["one or a few", "few", "some"]
+        text = ["entire", "all", "many or all"] if p.text == "ai_generated" else ["some", "entire", "all"]
+        return {"Text": text, "Images": images, "Translations": ["entire", "all", "some"]}
 
 
 def load_book(path: str | Path) -> Book:

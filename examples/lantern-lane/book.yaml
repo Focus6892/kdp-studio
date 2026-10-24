@@ -27,10 +27,10 @@ metadata:
     - "gentle fiction for relaxing"
     - "autumn cozy reads"
     - "clean fiction short stories"
-  categories:
-    - "Literature & Fiction > Genre Fiction > Short Stories"
-    - "Literature & Fiction > Women's Fiction > Friendship"
-    - "Literature & Fiction > Small Town & Rural"
+  categories:                     # KDP's picker (2026-10): Books > Literature & Fiction > Genre Fiction > <placement>, up to 3 placements
+    - "Literature & Fiction > Genre Fiction > Small Town & Rural"
+    - "Literature & Fiction > Genre Fiction > Friendship"
+    - "Literature & Fiction > Genre Fiction > Feel-Good"
 
 print:
   trim: 5x8
@@ -84,4 +84,5 @@ pricing:
 provenance:
   text: human
   interior_images: human
-  cover_art: ai_generated
+  cover_art: ai_generated         # the shipped placeholder cover is procedural; set this to match your real cover workflow
+  ai_tools: []                    # KDP requires the tool names when anything is AI-generated, e.g. ["gpt-image-1"]; empty = type them by hand

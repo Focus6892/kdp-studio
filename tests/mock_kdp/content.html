@@ -85,6 +85,9 @@ function assignFreeIsbn() { document.getElementById('isbn-assigned').value = 'fr
     <div role="option" onclick="pick('ai-translation', this)">None</div>
     <div role="option" onclick="pick('ai-translation', this)">Entire work, with minimal or no editing</div>
   </div><input type="hidden" id="ai-translation-value" value="None">
+  <div>Which tool(s) did you use to create the AI-generated images in your work?
+    <input type="text" id="ai-tool-0" placeholder="e.g. DALL-E" aria-label="AI tool 1"><input type="text" id="ai-tool-1" aria-label="AI tool 2"><input type="text" id="ai-tool-2" aria-label="AI tool 3"></div>
+  <label><input type="checkbox" id="ai-confirm" name="confirm-ai-answers" value="yes"> By clicking this, I confirm that my answers are accurate</label>
 </fieldset>
 <button type="button" onclick="document.getElementById('previewed').value='yes'">Launch Previewer</button>
 <input type="hidden" id="previewed" value="">

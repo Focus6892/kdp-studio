@@ -63,8 +63,11 @@ def test_checklist_contains_every_field():
     text = build_checklist(book, "paperback")
     assert "Bold & Easy Flowers" in text and "large print coloring book" in text
     assert "Images: AI-generated" in text and "Low-content book: No" in text
+    assert "Images scope: many or all (interior pages)" in text and "AI tools: gpt-image-1" in text and "I confirm that my answers are accurate" in text
     assert "8.5 x 11 in" in text and "Black & white interior with white paper" in text and "$9.99" in text
     story = load_book(ROOT / "examples" / "lantern-lane" / "book.yaml")
+    assert story.ai_scope()["Images"][0] == "one or a few"  # only the cover is AI-made
+    assert "REQUIRED" in story.ai_disclosure()["AI tools"]  # no tool names given yet
     etext = build_checklist(story, "ebook")
     assert "KDP Select" in etext and "$2.99" in etext
 
