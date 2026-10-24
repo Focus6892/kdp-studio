@@ -90,7 +90,7 @@ class PrintSpec(BaseModel):
 
 
 class ImageSource(BaseModel):
-    provider: Literal["placeholder", "folder", "openai", "google", "stability"] = "placeholder"
+    provider: Literal["placeholder", "folder", "spec", "openai", "google", "stability", "pollinations", "cloudflare"] = "placeholder"
     path: str | None = None
     model: str | None = None
     size: str = "1024x1536"
@@ -98,8 +98,8 @@ class ImageSource(BaseModel):
 
     @model_validator(mode="after")
     def _folder_needs_path(self) -> "ImageSource":
-        if self.provider == "folder" and not self.path:
-            raise ValueError("source.path is required when provider is 'folder'")
+        if self.provider in ("folder", "spec") and not self.path:
+            raise ValueError(f"source.path is required when provider is '{self.provider}'")
         return self
 
 
@@ -224,7 +224,7 @@ Interior = Annotated[Union[ColoringInterior, StoryInterior], Field(discriminator
 
 
 class ArtSource(BaseModel):
-    provider: Literal["placeholder", "file", "openai", "google", "stability"] = "placeholder"
+    provider: Literal["placeholder", "file", "openai", "google", "stability", "pollinations", "cloudflare"] = "placeholder"
     path: str | None = None
     prompt: str | None = None
     model: str | None = None

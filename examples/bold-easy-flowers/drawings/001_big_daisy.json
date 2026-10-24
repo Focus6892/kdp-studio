@@ -1,0 +1,20 @@
+{
+  "title": "Big daisy in a round frame",
+  "canvas": [1000, 1500],
+  "stroke": 14,
+  "shapes": [
+    {"type": "circle", "c": [500, 700], "r": 460, "stroke": 16},
+    {"type": "circle", "c": [500, 700], "r": 430, "stroke": 8},
+    {"type": "repeat", "count": 12, "center": [500, 700],
+     "shapes": [{"type": "petal", "c": [500, 700], "r_inner": 110, "length": 300, "width": 150, "angle": -90}]},
+    {"type": "circle", "c": [500, 700], "r": 110},
+    {"type": "repeat", "count": 8, "center": [500, 700],
+     "shapes": [{"type": "dot", "c": [500, 640], "r": 14}]},
+    {"type": "dot", "c": [500, 700], "r": 18},
+    {"type": "curve", "points": [[500, 1160], [470, 1250], [510, 1340], [480, 1440]], "stroke": 14},
+    {"type": "petal", "c": [492, 1270], "r_inner": 0, "length": 230, "width": 110, "angle": 200},
+    {"type": "line", "points": [[492, 1270], [280, 1340]], "stroke": 8},
+    {"type": "petal", "c": [500, 1360], "r_inner": 0, "length": 210, "width": 100, "angle": -20},
+    {"type": "line", "points": [[500, 1360], [700, 1290]], "stroke": 8}
+  ]
+}

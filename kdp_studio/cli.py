@@ -143,6 +143,41 @@ def cmd_image_test(args) -> int:
     return 0
 
 
+def cmd_draw_preview(args) -> int:
+    """Render every drawing spec in a folder to PNG (plus a contact sheet) so the designs can be reviewed."""
+    from PIL import Image
+
+    from .interior.vector import load_specs, render_spec, validate_spec
+
+    folder = Path(args.folder)
+    out = Path(args.out) if args.out else folder / "_preview"
+    out.mkdir(parents=True, exist_ok=True)
+    w, h = (int(x) for x in args.size.lower().split("x"))
+    thumbs = []
+    bad = 0
+    for path, spec in load_specs(folder):
+        problems = validate_spec(spec)
+        if problems:
+            bad += 1
+            print(f"  {path.name}: INVALID - " + "; ".join(problems))
+            continue
+        img = render_spec(spec, (w, h))
+        img.save(out / (path.stem + ".png"))
+        ink = 1.0 - (sum(img.histogram()[200:]) / (w * h))
+        print(f"  {path.name}: ok  ink={ink:.3f}  {spec.get('title', '')}")
+        thumbs.append(img.convert("RGB").resize((300, int(300 * h / w))))
+    if thumbs:
+        cols = min(4, len(thumbs))
+        rows = (len(thumbs) + cols - 1) // cols
+        th, tw = thumbs[0].height, 300
+        sheet = Image.new("RGB", (cols * (tw + 10) + 10, rows * (th + 10) + 10), "white")
+        for i, t in enumerate(thumbs):
+            sheet.paste(t, (10 + (i % cols) * (tw + 10), 10 + (i // cols) * (th + 10)))
+        sheet.save(out / "contact_sheet.png")
+        print(f"{len(thumbs)} drawing(s) rendered to {out} (contact_sheet.png)" + (f"; {bad} invalid" if bad else ""))
+    return 1 if bad else 0
+
+
 def cmd_build(args) -> int:
     book = load_book(args.book)
     build = book.build_dir
@@ -813,10 +848,15 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("image-test", help="generate a few coloring pages with the real image provider and compare raw vs cleaned")
     p.add_argument("book")
     p.add_argument("--n", type=int, default=3, help="number of pages (default 3)")
-    p.add_argument("--provider", choices=["placeholder", "folder", "openai", "google", "stability"], help="override interior.source.provider")
+    p.add_argument("--provider", choices=["placeholder", "folder", "spec", "openai", "google", "stability", "pollinations", "cloudflare"], help="override interior.source.provider")
     p.add_argument("--model", help="override interior.source.model (e.g. gpt-image-1, imagen-4.0-generate-001, core)")
     p.add_argument("--out", help="output folder (default build/image-test)")
     p.set_defaults(func=cmd_image_test)
+    p = sub.add_parser("draw-preview", help="render vector drawing specs (JSON) to PNG line art for review")
+    p.add_argument("folder")
+    p.add_argument("--size", default="1000x1500", help="pixel size, e.g. 2550x3300 for 8.5x11 at 300 DPI (default 1000x1500)")
+    p.add_argument("--out", help="output folder (default <folder>/_preview)")
+    p.set_defaults(func=cmd_draw_preview)
     p = sub.add_parser("build", help="build interior (+ EPUB for story books) + cover and run preflight")
     p.add_argument("book")
     p.add_argument("--images", type=int, help="limit the number of coloring pages (quick test builds)")

@@ -22,6 +22,7 @@ import os
 import random
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
@@ -158,6 +159,32 @@ class PlaceholderProvider:
         return out_path
 
 
+class SpecProvider:
+    """Vector drawing specs (JSON, see interior/vector.py) rendered to crisp line art - no image model at all."""
+
+    name = "spec"
+
+    def __init__(self, folder: Path):
+        from .vector import load_specs
+
+        self.folder = folder
+        self.specs = load_specs(folder)
+
+    def generate(self, prompt: str, index: int, attempt: int, out_path: Path, size: tuple[int, int]) -> Path:
+        from .vector import render_spec, validate_spec
+
+        pos = index if attempt == 0 else len(self.specs) - 1 - (index + attempt) % len(self.specs)
+        if pos >= len(self.specs) or pos < 0:
+            raise ProviderExhausted(f"{len(self.specs)} drawing spec(s) in {self.folder}; none left for page {index}")
+        path, spec = self.specs[pos]
+        problems = validate_spec(spec)
+        if problems:
+            raise ProviderError(f"{path.name}: " + "; ".join(problems))
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        render_spec(spec, size).save(out_path, "PNG")
+        return out_path
+
+
 class FolderProvider:
     name = "folder"
 
@@ -182,8 +209,9 @@ class FolderProvider:
 log = logging.getLogger(__name__)
 
 # rough list prices per image in USD (2026-10), only for the running estimate printed by image-test / build
-APPROX_COST_USD = {"openai": 0.07, "google": 0.04, "stability": 0.03, "placeholder": 0.0, "folder": 0.0, "file": 0.0}
-API_PROVIDERS = ("openai", "google", "stability")
+APPROX_COST_USD = {"spec": 0.0, "openai": 0.07, "google": 0.04, "stability": 0.03, "pollinations": 0.0, "cloudflare": 0.0, "placeholder": 0.0, "folder": 0.0, "file": 0.0}
+API_PROVIDERS = ("openai", "google", "stability", "pollinations", "cloudflare")
+FREE_PROVIDERS = ("pollinations", "cloudflare")
 
 
 class ProviderError(RuntimeError):
@@ -331,6 +359,78 @@ class StabilityProvider:
         return _write(out_path, _request(req))
 
 
+class PollinationsProvider:
+    """pollinations.ai - free, keyless FLUX endpoint (GET .../prompt/<text>). Anonymous calls are rate-limited
+    and come back downsized (about 630x940 for a 1024x1536 request); a free account token
+    (POLLINATIONS_API_KEY) lifts both. Images are JPEG; the cleanup step re-thresholds them anyway."""
+
+    name = "pollinations"
+    endpoint = "https://image.pollinations.ai/prompt/"
+
+    def __init__(self, model: str | None, size: str, negative_prompt: str | None = None, min_interval_s: float = 4.0):
+        self.model = model or "flux"
+        self.size = size
+        self.negative_prompt = negative_prompt
+        self.min_interval_s = min_interval_s
+        self.token = os.environ.get("POLLINATIONS_API_KEY")
+        self._last = 0.0
+
+    def url(self, prompt: str, seed: int, size: tuple[int, int]) -> str:
+        q = {"width": size[0], "height": size[1], "model": self.model, "nologo": "true", "enhance": "false", "safe": "true", "seed": seed}
+        return self.endpoint + urllib.parse.quote(_with_negative(prompt, self.negative_prompt)) + "?" + urllib.parse.urlencode(q)
+
+    def generate(self, prompt: str, index: int, attempt: int, out_path: Path, size: tuple[int, int]) -> Path:
+        wait = self.min_interval_s - (time.time() - self._last)
+        if wait > 0:
+            time.sleep(wait)  # be polite to a free service
+        headers = {"User-Agent": "kdp-studio/0.1"}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        req = urllib.request.Request(self.url(prompt, 1000 * index + attempt + 1, size), headers=headers)
+        data = _request(req, timeout=240, tries=4)
+        self._last = time.time()
+        if not data or data[:4] not in (b"\xff\xd8\xff\xe0", b"\xff\xd8\xff\xe1", b"\xff\xd8\xff\xdb", b"\x89PNG") and not data.startswith(b"RIFF"):
+            raise ProviderError(f"pollinations returned no image ({data[:80]!r})")
+        return _write(out_path, data)
+
+
+class CloudflareProvider:
+    """Cloudflare Workers AI (free daily allowance with a Cloudflare account): POST accounts/<id>/ai/run/<model>.
+    Default model @cf/black-forest-labs/flux-1-schnell returns {"result": {"image": <base64 jpeg>}} at 1024x1024;
+    @cf/stabilityai/stable-diffusion-xl-base-1.0 honours width/height and returns raw PNG bytes."""
+
+    name = "cloudflare"
+
+    def __init__(self, model: str | None, size: str, negative_prompt: str | None = None):
+        self.model = model or "@cf/black-forest-labs/flux-1-schnell"
+        self.negative_prompt = negative_prompt
+        self.account = _key("CF_ACCOUNT_ID")
+        self.token = _key("CF_API_TOKEN")
+
+    @property
+    def endpoint(self) -> str:
+        return f"https://api.cloudflare.com/client/v4/accounts/{self.account}/ai/run/{self.model}"
+
+    def body(self, prompt: str, size: tuple[int, int]) -> dict:
+        if "flux" in self.model:
+            return {"prompt": _with_negative(prompt, self.negative_prompt), "steps": 6}
+        b = {"prompt": prompt, "width": min(size[0], 2048), "height": min(size[1], 2048), "num_steps": 20}
+        if self.negative_prompt:
+            b["negative_prompt"] = self.negative_prompt
+        return b
+
+    def generate(self, prompt: str, index: int, attempt: int, out_path: Path, size: tuple[int, int]) -> Path:
+        req = urllib.request.Request(self.endpoint, data=json.dumps(self.body(prompt, size)).encode(), headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"})
+        data = _request(req, timeout=240)
+        if data[:1] == b"{":
+            payload = json.loads(data)
+            image = (payload.get("result") or {}).get("image")
+            if not payload.get("success", True) or not image:
+                raise ProviderError(f"Workers AI: {json.dumps(payload)[:400]}")
+            data = base64.b64decode(image)
+        return _write(out_path, data)
+
+
 def make_provider(source: ImageSource | ArtSource, base_dir: Path, negative_prompt: str | None = None) -> ImageProvider:
     if source.provider == "placeholder":
         return PlaceholderProvider(seed=source.seed)
@@ -338,12 +438,20 @@ def make_provider(source: ImageSource | ArtSource, base_dir: Path, negative_prom
         assert source.path is not None
         p = Path(source.path)
         return FolderProvider(p if p.is_absolute() else base_dir / p)
+    if source.provider == "spec":
+        assert source.path is not None
+        p = Path(source.path)
+        return SpecProvider(p if p.is_absolute() else base_dir / p)
     if source.provider == "openai":
         return OpenAIImagesProvider(model=source.model, size=source.size, negative_prompt=negative_prompt)
     if source.provider == "google":
         return GoogleImagenProvider(model=source.model, size=source.size, negative_prompt=negative_prompt)
     if source.provider == "stability":
         return StabilityProvider(model=source.model, size=source.size, negative_prompt=negative_prompt)
+    if source.provider == "pollinations":
+        return PollinationsProvider(model=source.model, size=source.size, negative_prompt=negative_prompt)
+    if source.provider == "cloudflare":
+        return CloudflareProvider(model=source.model, size=source.size, negative_prompt=negative_prompt)
     if source.provider == "file":
         raise ValueError("'file' is a cover-only source; handled by cover.render")
     raise ValueError(f"Unknown provider {source.provider}")

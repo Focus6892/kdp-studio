@@ -15,6 +15,8 @@ KEY_VARS = {
     "openai": "OPENAI_API_KEY",
     "google": "GEMINI_API_KEY",
     "stability": "STABILITY_API_KEY",
+    "pollinations": "POLLINATIONS_API_KEY",  # optional: keyless works, a free account token raises limits/resolution
+    "cloudflare": "CF_API_TOKEN",  # plus CF_ACCOUNT_ID
     "anthropic": "ANTHROPIC_API_KEY",
 }
 

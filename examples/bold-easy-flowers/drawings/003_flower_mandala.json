@@ -1,0 +1,21 @@
+{
+  "title": "Bold flower mandala",
+  "canvas": [1000, 1500],
+  "stroke": 12,
+  "shapes": [
+    {"type": "circle", "c": [500, 750], "r": 470, "stroke": 16},
+    {"type": "repeat", "count": 16, "center": [500, 750],
+     "shapes": [{"type": "arc", "c": [500, 290], "r": 92, "start": 180, "end": 360}]},
+    {"type": "circle", "c": [500, 750], "r": 380, "stroke": 8},
+    {"type": "repeat", "count": 8, "center": [500, 750],
+     "shapes": [{"type": "petal", "c": [500, 750], "r_inner": 150, "length": 220, "width": 150, "angle": -90}]},
+    {"type": "repeat", "count": 8, "center": [500, 750], "start": 22.5,
+     "shapes": [{"type": "petal", "c": [500, 750], "r_inner": 160, "length": 140, "width": 70, "angle": -90, "stroke": 8}]},
+    {"type": "circle", "c": [500, 750], "r": 150},
+    {"type": "repeat", "count": 6, "center": [500, 750],
+     "shapes": [{"type": "petal", "c": [500, 750], "r_inner": 30, "length": 110, "width": 70, "angle": -90}]},
+    {"type": "circle", "c": [500, 750], "r": 30},
+    {"type": "repeat", "count": 16, "center": [500, 750], "start": 11.25,
+     "shapes": [{"type": "dot", "c": [500, 320], "r": 9}]}
+  ]
+}
