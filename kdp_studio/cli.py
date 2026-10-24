@@ -163,7 +163,7 @@ def cmd_local_setup(args) -> int:
 
     if not args.skip_install:
         for cmd in ([sys.executable, "-m", "pip", "install", "--user", "--index-url", f"https://download.pytorch.org/whl/{args.cuda}", "torch"],
-                    [sys.executable, "-m", "pip", "install", "--user", "diffusers", "transformers", "accelerate", "safetensors", "peft"]):
+                    [sys.executable, "-m", "pip", "install", "--user", "diffusers", "transformers", "accelerate", "safetensors", "peft", "scipy"]):
             print("+", " ".join(cmd))
             if subprocess.call(cmd) != 0:
                 print("install failed; see the pip output above")

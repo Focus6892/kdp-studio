@@ -17,7 +17,7 @@ Write-Host "Python $ver found"
 & python -m pip install --user playwright pyyaml | Out-Null
 if ($UI)    { & python -m pip install --user flask | Out-Null }
 if ($Local) { & python -m pip install --user --index-url "https://download.pytorch.org/whl/$Cuda" torch | Select-Object -Last 1
-              & python -m pip install --user diffusers transformers accelerate safetensors peft | Select-Object -Last 1 }
+              & python -m pip install --user diffusers transformers accelerate safetensors peft scipy | Select-Object -Last 1 }
 & python -m pip install --user cryptography | Out-Null
 if (-not (Test-Path ".env")) { Copy-Item ".env.example" ".env"; Write-Host "Created .env - fill in API keys if you use paid image providers" }
 Write-Host ""

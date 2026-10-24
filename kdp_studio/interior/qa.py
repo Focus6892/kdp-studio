@@ -1,4 +1,4 @@
-"""Page quality checks: a fast local heuristic, a free local CLIP content filter (people / nudity / text)
+"""Page quality checks: a fast local heuristic, a free local OWLv2 content filter (people / nudity)
 and an optional Claude vision review."""
 
 from __future__ import annotations
@@ -136,59 +136,58 @@ def claude_qa(art: Image.Image, opts: QAOptions, audience: str) -> QAResult | No
     return QAResult(ok=not reasons, source="claude", reasons=reasons, notes=data.get("notes", ""))
 
 
-# ---------------------------------------------------------------- CLIP content filter (free, local)
-PEOPLE_LABELS = ["a drawing of a person", "a drawing of a woman", "a drawing of a man", "a portrait of a human face", "a drawing of a child"]
-NUDITY_LABELS = ["a drawing of a naked person", "nudity", "an erotic drawing"]
-TEXT_LABELS = ["a page of text", "letters and words"]
-SAFE_LABELS = ["a line drawing of flowers", "a coloring book page of plants", "a mandala pattern", "a drawing of an animal", "a decorative pattern", "a drawing of objects", "a landscape drawing"]
-_clip = {}
+# ---------------------------------------------------------------- content filter: people / nudity (free, local)
+# Open-vocabulary detection (OWLv2, Apache-2.0) finds a stylised figure hidden in dense floral line art where
+# whole-image CLIP scoring does not. Calibrated 2026-10-24 on 30 generated pages (6 with people): the max score
+# over PEOPLE_QUERIES was >= 0.33 on every page with a person and <= 0.21 on every page without.
+PEOPLE_QUERIES = ["a portrait of a woman with flowers in her hair", "a human face", "a girl", "a human figure"]
+NUDITY_QUERIES = ["a naked body"]
+_detector = {}
 
 
-def decide_content(probs: dict[str, float], opts: QAOptions) -> list[str]:
-    """Pure decision on zero-shot probabilities (one per label) so it can be tested without the model."""
-    people = sum(probs.get(k, 0.0) for k in PEOPLE_LABELS)
-    nude = sum(probs.get(k, 0.0) for k in NUDITY_LABELS)
-    text = sum(probs.get(k, 0.0) for k in TEXT_LABELS)
+def decide_content(scores: dict[str, float], opts: QAOptions) -> list[str]:
+    """Pure decision on per-query max detection scores, testable without the model."""
+    people = max((scores.get(k, 0.0) for k in PEOPLE_QUERIES), default=0.0)
+    nude = max((scores.get(k, 0.0) for k in NUDITY_QUERIES), default=0.0)
     reasons = []
-    if nude >= min(0.15, opts.people_threshold):
-        reasons.append(f"nudity or erotic content (p={nude:.2f})")
+    if nude >= 0.10:
+        reasons.append(f"possible nudity (score {nude:.2f})")
     if people >= opts.people_threshold:
-        reasons.append(f"contains a person (p={people:.2f})")
-    if text >= 0.5:
-        reasons.append(f"looks like text (p={text:.2f})")
+        reasons.append(f"contains a person (score {people:.2f} >= {opts.people_threshold})")
     return reasons
 
 
-def _load_clip(model_name: str):
-    if "pipe" not in _clip:
-        import torch
-        from transformers import CLIPModel, CLIPProcessor
+def _load_detector(model_name: str, device: str):
+    key = (model_name, device)
+    if key not in _detector:
+        from transformers import Owlv2ForObjectDetection, Owlv2Processor
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        model = CLIPModel.from_pretrained(model_name).to(device).eval()
-        _clip["pipe"] = (model, CLIPProcessor.from_pretrained(model_name), device)
-    return _clip["pipe"]
+        _detector[key] = (Owlv2Processor.from_pretrained(model_name), Owlv2ForObjectDetection.from_pretrained(model_name).to(device).eval())
+    return _detector[key]
 
 
 def content_qa(image: "Image.Image | Path", opts: QAOptions) -> QAResult | None:
-    """Zero-shot CLIP check on the generated image (the colour original, before thresholding). Returns None
-    when the model stack is unavailable or KDP_STUDIO_SKIP_CONTENT_QA=1 (tests), so builds never stall on it."""
+    """Reject pages showing people or nudity, judged on the colour original. Returns None when the model stack
+    is unavailable or KDP_STUDIO_SKIP_CONTENT_QA=1 (tests), so a build never stalls on it. Runs on the CPU by
+    default (about 5-10 s per page) so it never competes with the image model for a small GPU's memory."""
     if os.environ.get("KDP_STUDIO_SKIP_CONTENT_QA") == "1":
         return None
     try:
         import torch
 
-        model, processor, device = _load_clip(opts.content_model)
-    except Exception as exc:  # noqa: BLE001 - torch/transformers missing or download failed
+        processor, model = _load_detector(opts.content_model, opts.content_device)
+    except Exception as exc:  # noqa: BLE001 - torch/transformers/scipy missing or download failed
         log.warning("content filter unavailable (%s); pages are not screened for people", str(exc).splitlines()[0][:120])
         return None
-    labels = PEOPLE_LABELS + NUDITY_LABELS + TEXT_LABELS + SAFE_LABELS
+    queries = PEOPLE_QUERIES + NUDITY_QUERIES
     img = Image.open(image).convert("RGB") if isinstance(image, (str, Path)) else image.convert("RGB")
     with torch.no_grad():
-        inputs = processor(text=labels, images=img, return_tensors="pt", padding=True).to(device)
-        probs = model(**inputs).logits_per_image.softmax(dim=1)[0].tolist()
-    table = dict(zip(labels, probs))
-    reasons = decide_content(table, opts)
-    top = sorted(table.items(), key=lambda kv: -kv[1])[:3]
-    return QAResult(ok=not reasons, source="clip", reasons=reasons, notes="; ".join(f"{k} {v:.2f}" for k, v in top))
-
+        inputs = processor(text=[queries], images=img, return_tensors="pt").to(opts.content_device)
+        out = model(**inputs)
+        res = processor.post_process_grounded_object_detection(out, threshold=0.01, target_sizes=torch.tensor([[img.height, img.width]]).to(opts.content_device), text_labels=[queries])[0]
+    scores = {qq: 0.0 for qq in queries}
+    for sc, label in zip(res["scores"].tolist(), res["text_labels"]):
+        scores[label] = max(scores[label], sc)
+    reasons = decide_content(scores, opts)
+    top = sorted(scores.items(), key=lambda kv: -kv[1])[:2]
+    return QAResult(ok=not reasons, source="owlv2", reasons=reasons, notes="; ".join(f"{k} {v:.2f}" for k, v in top))

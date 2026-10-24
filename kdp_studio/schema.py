@@ -135,9 +135,10 @@ class QAOptions(BaseModel):
     min_ink_ratio: float = Field(0.01, ge=0.0, le=1.0)
     max_ink_ratio: float = Field(0.30, ge=0.0, le=1.0)
     max_solid_black: float = Field(0.03, ge=0.0, le=0.5)
-    reject_people: bool = True  # free local CLIP zero-shot filter: people, nudity, text (model-generated pages only)
-    people_threshold: float = Field(0.35, ge=0.05, le=0.95)
-    content_model: str = "openai/clip-vit-base-patch32"  # share of the page that is solid black after erosion (flower centres etc. are fine)
+    reject_people: bool = True  # free local OWLv2 detector: people and nudity (model-generated pages only)
+    people_threshold: float = Field(0.27, ge=0.05, le=0.95)  # calibrated: people >= 0.33, flowers-only <= 0.21
+    content_model: str = "google/owlv2-base-patch16-ensemble"
+    content_device: Literal["cpu", "cuda"] = "cpu"  # cpu keeps a 4 GB GPU free for Stable Diffusion  # share of the page that is solid black after erosion (flower centres etc. are fine)
     max_retries: int = Field(2, ge=0, le=5)
 
 
