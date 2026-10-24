@@ -41,9 +41,39 @@ window.CKEDITOR = { instances: { 'data[print_book][description]': {
   <select id="data-print-book-reading-interest-age-end-input-native" name="data[print_book][reading_interest_age][max]"><option value="">Select one</option><option value="8">8</option><option value="12">12</option><option value="18">18</option></select>
 </fieldset>
 <label>Primary marketplace <select id="mock-home-marketplace" name="data[print_book][home_marketplace]"><option>Amazon.com</option><option>Amazon.co.uk</option></select></label>
-<button id="categories-modal-button" type="button">Choose categories</button>
+
 <label><input type="checkbox" id="data-view-is-lcb" name="data[view][is_lcb]-check" value="true"> Low-content book (e.g. journals, notebooks, and planners)</label><br>
 <label><input type="checkbox" id="data-print-book-large-print" name="data[print_book][large_print]-check" value="true"> Large-print book (content is 16-point font size or greater)</label><br>
+<fieldset><legend>Categories</legend>
+  <button type="button" id="categories-modal-button" onclick="document.getElementById('categories-modal').style.display='block'">Choose categories</button>
+  <div id="categories-modal" role="dialog" style="display:none;border:1px solid #333;padding:8px;background:#fff">
+    <select id="cat-level-1" onchange="catLevel(1, this.value)"><option value="">Select one</option></select>
+    <select id="cat-level-2" onchange="catLevel(2, this.value)"><option value="">Select one</option></select>
+    <div id="cat-placements"></div>
+    <button type="button" onclick="document.getElementById('categories-modal').style.display='none'">Save</button>
+  </div>
+</fieldset>
+<script>
+// Mirrors KDP's picker: cascading selects, then placement checkboxes (ids let collect('d.') record them)
+const CAT_TREE = {
+  "Literature & Fiction": {"Genre Fiction": ["Family Saga", "Feel-Good", "Friendship", "Short Stories", "Small Town & Rural"], "Women's Fiction": ["Friendship"]},
+  "Crafts, Hobbies & Home": {"Crafts & Hobbies": ["Coloring Books for Grown-Ups", "Drawing"]},
+  "Self-Help": {"Stress Management": ["Stress Management"]},
+  "Arts & Photography": {"Drawing": ["Coloring Books", "Pencil"]},
+  "Children's Books": {"Activities, Crafts & Games": ["Activity Books", "Coloring Books"]}
+};
+function fill(sel, names) { sel.innerHTML = '<option value="">Select one</option>' + names.map(n => '<option>' + n + '</option>').join(''); }
+fill(document.getElementById('cat-level-1'), Object.keys(CAT_TREE));
+function catLevel(level, value) {
+  const pl = document.getElementById('cat-placements'); pl.innerHTML = '';
+  if (level === 1) { fill(document.getElementById('cat-level-2'), Object.keys(CAT_TREE[value] || {})); return; }
+  const l1 = document.getElementById('cat-level-1').value;
+  (CAT_TREE[l1] && CAT_TREE[l1][value] || []).forEach(name => {
+    const id = 'cat-placement-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    pl.insertAdjacentHTML('beforeend', '<label><input type="checkbox" id="' + id + '" value="' + name + '"> ' + name + '</label><br>');
+  });
+}
+</script>
 <fieldset><legend>Keywords</legend>
   <input id="data-print-book-keywords-0" name="data[print_book][keywords][0]"><input id="data-print-book-keywords-1" name="data[print_book][keywords][1]"><input id="data-print-book-keywords-2" name="data[print_book][keywords][2]"><input id="data-print-book-keywords-3" name="data[print_book][keywords][3]">
   <input id="data-print-book-keywords-4" name="data[print_book][keywords][4]"><input id="data-print-book-keywords-5" name="data[print_book][keywords][5]"><input id="data-print-book-keywords-6" name="data[print_book][keywords][6]">

@@ -162,6 +162,67 @@ class BrowserSession:
                     continue
         return None
 
+    def open_dialog(self):
+        """The topmost visible modal (KDP's category picker is one), or None."""
+        for cand in ("[role='dialog']", ".a-popover-modal", ".a-modal-scroller", "#categories-modal"):
+            try:
+                loc = self.page.locator(cand)
+                for i in range(loc.count() - 1, -1, -1):
+                    if loc.nth(i).is_visible():
+                        return loc.nth(i)
+            except Exception:  # noqa: BLE001
+                continue
+        return None
+
+    def _option_by_text(self, loc, label: str) -> bool:
+        """Pick a <select> option whose text equals (else contains) `label`; works on hidden selects too."""
+        try:
+            return bool(loc.evaluate(
+                """(el, want) => { const w = want.trim().toLowerCase(); const opts = [...el.options];
+                     const o = opts.find(o => o.textContent.trim().toLowerCase() === w) || opts.find(o => o.textContent.trim().toLowerCase().includes(w));
+                     if (!o) return false;
+                     if (el.value === o.value) return true;  // already on this level: re-selecting would reset the ticks below
+                     el.value = o.value; el.dispatchEvent(new Event('input', {bubbles: true}));
+                     el.dispatchEvent(new Event('change', {bubbles: true})); return true; }""",
+                label,
+            ))
+        except Exception:  # noqa: BLE001
+            return False
+
+    def pick_category(self, dialog, parts: list[str]) -> bool:
+        """KDP's picker: cascading <select>s for the path, then a placement checkbox for the last part.
+        Selects are re-queried after each choice because the next level is rendered on demand."""
+        for i, part in enumerate(parts[:-1]):
+            selects = dialog.locator("select")
+            if selects.count() <= i or not self._option_by_text(selects.nth(i), part):
+                return False
+            self.page.wait_for_timeout(900)
+        last = parts[-1]
+        for attempt in (lambda: dialog.get_by_role("checkbox", name=last).first, lambda: dialog.locator("label", has_text=last).first):
+            try:
+                loc = attempt()
+                if loc.count() == 0:
+                    continue
+                if loc.evaluate("el => el.tagName.toLowerCase()") == "label":
+                    loc.click()
+                else:
+                    loc.check()
+                return True
+            except Exception as exc:  # noqa: BLE001
+                log.info("placement %r: %s", last, str(exc).splitlines()[0][:120])
+        return False
+
+    def click_in(self, scope, candidates: list) -> bool:
+        for cand in candidates:
+            try:
+                loc = self._locator(scope, cand)
+                if loc.count() > 0 and loc.first.is_visible():
+                    loc.first.click()
+                    return True
+            except Exception as exc:  # noqa: BLE001
+                log.info("click_in failed: %s", str(exc).splitlines()[0][:120])
+        return False
+
     def comboboxes(self) -> list[tuple[object, str]]:
         """Every ARIA combobox on the page with its accessible name (React-style custom dropdowns)."""
         out: list[tuple[object, str]] = []

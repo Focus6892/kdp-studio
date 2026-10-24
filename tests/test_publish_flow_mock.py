@@ -97,7 +97,7 @@ def test_assisted_flow_against_mock(tmp_path):
     # gates were asked in order and screenshots taken
     assert len(approver.prompts) == 3 and "never clicks Publish" in approver.prompts[-1]
     assert len(result.screenshots) == 3
-    assert {p.name for p in (tmp_path / "dom").iterdir()} == {"dom-create.json", "dom-create.md", "dom-details.json", "dom-details.md", "dom-content.json", "dom-content.md", "dom-pricing.json", "dom-pricing.md"}
+    assert {p.name for p in (tmp_path / "dom").iterdir()} == {"dom-create.json", "dom-create.md", "dom-details.json", "dom-details.md", "dom-categories.json", "dom-categories.md", "dom-content.json", "dom-content.md", "dom-pricing.json", "dom-pricing.md"}
     assert "data-print-book-title" in (tmp_path / "dom" / "dom-details.md").read_text(encoding="utf-8")
     title_row = store.get_title(book.id, "paperback")
     assert title_row and title_row["status"] == "draft"
@@ -186,5 +186,25 @@ def test_flow_never_fills_a_tab_that_did_not_appear(tmp_path):
     assert "ink_paper" in unfilled and "list_price_us" in unfilled and "territories" in unfilled
     assert any("Content tab never appeared" in n for n in result.notes)
     assert [Path(s).name for s in result.screenshots] == ["01-details.png"]
+    store.close()
+
+
+def test_categories_are_picked_in_the_mock_dialog(tmp_path):
+    """Three placements under the same subtree: cascading selects once, then three ticks, then Save."""
+    book = load_book(ROOT / "examples" / "lantern-lane" / "book.yaml")
+    start = (MOCK / "details.html").as_uri()
+    session = _session(tmp_path, start)
+    store = PublishStore(tmp_path / "publish.sqlite")
+    try:
+        result = run_flow(book, "paperback", session, load_selectors(None), ScriptedApprover(["q"]), store, start_url=start, dump_dir=tmp_path / "dom")
+        page = session.page
+        assert page.is_checked("#cat-placement-small-town-rural") and page.is_checked("#cat-placement-friendship") and page.is_checked("#cat-placement-feel-good")
+        assert not page.is_checked("#cat-placement-short-stories")
+        assert not page.is_visible("#categories-modal")  # saved and closed
+    finally:
+        session.close()
+    assert result.status == "aborted"
+    assert all(f"category:{c}" in result.filled for c in book.metadata.categories)
+    assert (tmp_path / "dom" / "dom-categories.md").is_file()
     store.close()
 

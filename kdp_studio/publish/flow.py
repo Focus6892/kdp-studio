@@ -260,7 +260,37 @@ class Flow:
             self.s.uncheck(self._c("details", "low_content"))
         if md.large_print:
             self._record(self.s.check(self._c("details", "large_print")), "large_print", "yes")
-        self.res.notes.append("Categories must be picked in KDP's 'Choose categories' dialog: " + " | ".join(md.categories))
+        self._choose_categories()
+
+    def _choose_categories(self) -> None:
+        """Best effort on KDP's 'Choose categories' dialog (cascading selects + placement checkboxes, up to 3).
+        Whatever it cannot do is listed for the human; the dialog's structure is dumped for selector upkeep."""
+        cats = self.book.metadata.categories[:3]
+        note = "Categories must be picked in KDP's 'Choose categories' dialog: " + " | ".join(cats)
+        if not cats:
+            return
+        if not self.s.click(self._c("details", "categories_button")):
+            self.res.notes.append(note)
+            return
+        self._pause(1500)
+        self._dump("categories")
+        dlg = self.s.open_dialog()
+        if dlg is None:
+            self.res.notes.append(note)
+            return
+        picked: list[str] = []
+        for path in cats:
+            parts = [x.strip() for x in path.split(">") if x.strip()]
+            if parts and self.s.pick_category(dlg, parts):
+                picked.append(path)
+                self._pause(400)
+        saved = bool(picked) and self.s.click_in(dlg, self._c("details", "categories_save"))
+        for path in cats:
+            self._record(path in picked, f"category:{path}", "pick in the dialog")
+        if picked and not saved:
+            self.res.notes.append("Categories were ticked but the dialog's Save button was not found: check the dialog and save it yourself.")
+        if len(picked) < len(cats):
+            self.res.notes.append(note)
 
     def _choose_trim(self, trim: str) -> bool:
         label = trim.replace("x", " x ")  # "8.5x11" -> "8.5 x 11"

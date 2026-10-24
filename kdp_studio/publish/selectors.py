@@ -55,7 +55,9 @@ DEFAULT_SELECTORS: dict = {
         "age_min": ["#data-{fmt}-reading-interest-age-start-input-native", "#data-reading-interest-age-start-input-native", "select[name*='reading_interest_age][min']"],
         "age_max": ["#data-{fmt}-reading-interest-age-end-input-native", "#data-reading-interest-age-end-input-native", "select[name*='reading_interest_age][max']"],
         "primary_marketplace": ["select[name*='home_marketplace']", "select[aria-label='primary-marketplace-selection']"],
-        "categories_button": ["#categories-modal-button", "button:has-text('Choose categories')"],
+        "categories_button": ["#categories-modal-button", "button:has-text('Choose categories')", "button:has-text('Edit categories')"],
+        # inside the picker dialog (unverified): the button that keeps the ticked placements
+        "categories_save": ["button:has-text('Save')", "button:has-text('Done')", "button:has-text('Apply')", "input[type='submit'][value*='Save']", {"role": "button", "name": "Save"}],
         "low_content": ["#data-view-is-lcb", "input[name*='is_lcb']", "#data-{fmt}-is-low-content"],
         "large_print": ["#data-{fmt}-large-print", "input[name*='large_print']"],
         "keyword": ["#data-{fmt}-keywords-{i}", "input[name='data[{fmt_u}][keywords][{i}]']", "#data-keywords-{i}", "input[name='data[keywords][{i}]']"],
