@@ -32,6 +32,8 @@ from typing import Protocol
 from PIL import Image, ImageDraw
 
 from ..schema import ArtSource, ImageSource
+from .. import keys as keymod
+from .failover import FailoverProvider, ProviderState, default_chain, expand_chain, provider_of
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 
@@ -384,12 +386,12 @@ class PollinationsProvider:
     name = "pollinations"
     endpoint = "https://image.pollinations.ai/prompt/"
 
-    def __init__(self, model: str | None, size: str, negative_prompt: str | None = None, min_interval_s: float = 4.0):
+    def __init__(self, model: str | None, size: str, negative_prompt: str | None = None, min_interval_s: float = 4.0, token: str | None = None):
         self.model = model or "flux"
         self.size = size
         self.negative_prompt = negative_prompt
         self.min_interval_s = min_interval_s
-        self.token = os.environ.get("POLLINATIONS_API_KEY")
+        self.token = token or os.environ.get("POLLINATIONS_API_KEY")
         self._last = 0.0
 
     def url(self, prompt: str, seed: int, size: tuple[int, int]) -> str:
@@ -418,14 +420,14 @@ class CloudflareProvider:
 
     name = "cloudflare"
 
-    def __init__(self, model: str | None, size: str, negative_prompt: str | None = None):
+    def __init__(self, model: str | None, size: str, negative_prompt: str | None = None, account: str | None = None, token: str | None = None):
         if model and not model.startswith("@cf/"):
             log.warning("cloudflare: model %r is not a Workers AI id; using flux-1-schnell", model)
             model = None
         self.model = model or "@cf/black-forest-labs/flux-1-schnell"
         self.negative_prompt = negative_prompt
-        self.account = _key("CF_ACCOUNT_ID")
-        self.token = _key("CF_API_TOKEN")
+        self.account = account or _key("CF_ACCOUNT_ID")
+        self.token = token or _key("CF_API_TOKEN")
 
     @property
     def endpoint(self) -> str:
@@ -435,7 +437,8 @@ class CloudflareProvider:
         if "flux" in self.model:
             # FLUX has no negative prompt; folding 'Avoid: woman, child, ...' into the text trips Workers AI's prompt
             # moderation (HTTP 400 'NSFW content') and can even summon what it names. Positive prompt only.
-            return {"prompt": prompt, "steps": 6}
+            # 4 steps is what schnell is distilled for; Workers AI bills 9.6 neurons per step per 512px tile, so 6 steps cost 45% more
+            return {"prompt": prompt, "steps": 4}
         # SDXL / DreamShaper-LCM (Beta): width/height 256-2048; LCM wants few steps and low guidance
         lcm = "lcm" in self.model
         b = {"prompt": prompt, "width": min(size[0], 2048), "height": min(size[1], 2048), "num_steps": 8 if lcm else 20}
@@ -526,11 +529,45 @@ class LocalDiffusersProvider:
         return out_path
 
 
-def make_provider(source: ImageSource | ArtSource, base_dir: Path, negative_prompt: str | None = None) -> ImageProvider:
+KEYED_PROVIDERS = ("openai", "google", "stability", "pollinations", "cloudflare")  # take an API key, so they may have backup accounts (NAME_2 ...)
+
+
+def _cred(profile: str | None, var: str, optional: bool = False) -> str | None:
+    """One credential for one account: var for account 1, var_2 for 'provider#2' ... (environment first, then .env)."""
+    n = keymod.parse_profile_id(profile)[1] if profile else 1
+    name = keymod.var_name(var, n)
+    value = os.environ.get(name) or keymod.read_env().get(name, "")
+    if not value and not optional:
+        raise ProviderError(f"{name} is not set: add it in Cài đặt (kdp ui) or in .env as {name}=...")
+    return value or None
+
+
+def make_provider(source: ImageSource | ArtSource, base_dir: Path, negative_prompt: str | None = None, profile: str | None = None,
+                  state: ProviderState | None = None) -> ImageProvider:
+    """The provider for a book. 'auto' = a failover chain over the configured accounts and providers; a keyed provider with
+    several accounts (NAME, NAME_2 ...) = a failover chain over those accounts; otherwise one plain provider."""
     forced = os.environ.get("KDP_STUDIO_FORCE_PROVIDER")  # tests/CI: keep example books off the GPU and the network
-    if forced and source.provider in API_PROVIDERS and forced in ("placeholder", "spec"):  # only network/GPU providers are replaced
+    if forced and (source.provider in API_PROVIDERS or source.provider == "auto") and forced in ("placeholder", "spec"):
         log.info("KDP_STUDIO_FORCE_PROVIDER=%s overrides provider %s", forced, source.provider)
         source = source.model_copy(update={"provider": forced})
+    if source.provider == "auto":
+        chain = expand_chain(source.chain) if getattr(source, "chain", None) else default_chain()
+        if not chain:
+            raise ProviderError("provider 'auto' needs at least one configured account (Cài đặt -> Cloudflare) or the local GPU stack (kdp local-setup)")
+        members = [(pid, _single(source.model_copy(update={"provider": provider_of(pid), "model": None}), base_dir, negative_prompt, pid)) for pid in chain]
+        prov = FailoverProvider(members, state)
+        log.info("image provider auto: %s", prov.describe())
+        return prov
+    if profile is None and source.provider in KEYED_PROVIDERS:
+        ids = [p["id"] for p in keymod.profiles(source.provider) if p["complete"]]
+        if len(ids) > 1:
+            prov = FailoverProvider([(pid, _single(source, base_dir, negative_prompt, pid)) for pid in ids], state)
+            log.info("image provider %s: %d accounts (%s)", source.provider, len(ids), prov.describe())
+            return prov
+    return _single(source, base_dir, negative_prompt, profile)
+
+
+def _single(source: ImageSource | ArtSource, base_dir: Path, negative_prompt: str | None, profile: str | None) -> ImageProvider:
     if source.provider == "placeholder":
         return PlaceholderProvider(seed=source.seed)
     if source.provider == "folder":
@@ -542,17 +579,17 @@ def make_provider(source: ImageSource | ArtSource, base_dir: Path, negative_prom
         p = Path(source.path)
         return SpecProvider(p if p.is_absolute() else base_dir / p)
     if source.provider == "openai":
-        return OpenAIImagesProvider(model=source.model, size=source.size, negative_prompt=negative_prompt)
+        return OpenAIImagesProvider(model=source.model, size=source.size, api_key=_cred(profile, "OPENAI_API_KEY"), negative_prompt=negative_prompt)
     if source.provider == "google":
-        return GoogleImagenProvider(model=source.model, size=source.size, negative_prompt=negative_prompt)
+        return GoogleImagenProvider(model=source.model, size=source.size, api_key=_cred(profile, "GEMINI_API_KEY"), negative_prompt=negative_prompt)
     if source.provider == "stability":
-        return StabilityProvider(model=source.model, size=source.size, negative_prompt=negative_prompt)
+        return StabilityProvider(model=source.model, size=source.size, api_key=_cred(profile, "STABILITY_API_KEY"), negative_prompt=negative_prompt)
     if source.provider == "local":
         return LocalDiffusersProvider(source.model, getattr(source, "local_size", "512x768"), negative_prompt, getattr(source, "lora", None), getattr(source, "lora_scale", 0.8), getattr(source, "steps", 28), getattr(source, "guidance", 7.0), source.seed)
     if source.provider == "pollinations":
-        return PollinationsProvider(model=source.model, size=source.size, negative_prompt=negative_prompt)
+        return PollinationsProvider(model=source.model, size=source.size, negative_prompt=negative_prompt, token=_cred(profile, "POLLINATIONS_API_KEY", optional=True))
     if source.provider == "cloudflare":
-        return CloudflareProvider(model=source.model, size=source.size, negative_prompt=negative_prompt)
+        return CloudflareProvider(model=source.model, size=source.size, negative_prompt=negative_prompt, account=_cred(profile, "CF_ACCOUNT_ID"), token=_cred(profile, "CF_API_TOKEN"))
     if source.provider == "file":
         raise ValueError("'file' is a cover-only source; handled by cover.render")
     raise ValueError(f"Unknown provider {source.provider}")

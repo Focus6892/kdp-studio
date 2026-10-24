@@ -54,11 +54,12 @@ def test_provider_bodies_are_shaped_for_each_api(monkeypatch):
     from kdp_studio.interior.generate import CloudflareProvider, PollinationsProvider
 
     cf = CloudflareProvider(model=None, size="1024x1536", negative_prompt="woman, child")
-    assert cf.body("a daisy", (1024, 1536)) == {"prompt": "a daisy", "steps": 6}  # FLUX: never fold the negative prompt in
+    assert cf.body("a daisy", (1024, 1536)) == {"prompt": "a daisy", "steps": 4}  # FLUX: never fold the negative prompt in; 4 steps = schnell's design point
     assert "Avoid" not in PollinationsProvider(model=None, size="1024x1536", negative_prompt="woman").url("a daisy", 1, (1024, 1536))
 
 
-def test_missing_key_is_a_clear_error(monkeypatch):
+def test_missing_key_is_a_clear_error(monkeypatch, tmp_path):
+    monkeypatch.setattr("kdp_studio.keys.env_path", lambda: tmp_path / ".env")  # credentials also fall back to .env, so point it at an empty one
     for var in ("OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "STABILITY_API_KEY", "KDP_STUDIO_FORCE_PROVIDER"):
         monkeypatch.delenv(var, raising=False)
     for provider in ("openai", "google", "stability"):

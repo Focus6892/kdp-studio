@@ -90,8 +90,9 @@ class PrintSpec(BaseModel):
 
 
 class ImageSource(BaseModel):
-    provider: Literal["placeholder", "folder", "spec", "local", "openai", "google", "stability", "pollinations", "cloudflare"] = "placeholder"
+    provider: Literal["placeholder", "folder", "spec", "local", "openai", "google", "stability", "pollinations", "cloudflare", "auto"] = "placeholder"
     path: str | None = None
+    chain: list[str] | None = None  # provider 'auto': members in order, e.g. [cloudflare, cloudflare#2, local]; None = the default chain (Cài đặt)
     model: str | None = None  # API model name, or for 'local' a Hugging Face repo id / .safetensors path (SD 1.5 family)
     size: str = "1024x1536"
     seed: int = 7

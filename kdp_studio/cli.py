@@ -74,14 +74,24 @@ def cmd_keys(args) -> int:
         updates = dict(kv.split("=", 1) for kv in args.set if "=" in kv)
         written = keymod.save_env(updates)
         print("saved to .env: " + (", ".join(written) or "nothing (unknown names or empty values)"))
+    from .interior.failover import ProviderState, default_chain
+
     for p in keymod.status_table():
-        state = ", ".join(f"{v}={'set' if ok else 'missing'}" for v, ok in p["present"].items()) or "no key needed"
-        line = f"  {p['id']:12} {state}"
-        if args.check and (args.check == "all" or args.check == p["id"]) and p["vars"]:
-            res = keymod.check(p["id"])
-            line += f"  -> {'OK' if res['ok'] else 'FAIL'}: {res['detail']}"
-        print(line)
-    print("Keys: environment first, then .env in the project folder (never committed). Get them: kdp ui -> Cài đặt.")
+        if not p["vars"]:
+            print(f"  {p['id']:14} no key needed")
+            continue
+        for pr in p["profiles"]:  # account 1 always; backup accounts (_2, _3 ...) when any of their variables is set
+            state = ", ".join(f"{pr['vars'][v]}={'set' if ok else 'missing'}" for v, ok in pr["present"].items())
+            line = f"  {pr['id']:14} {state}"
+            if args.check and (args.check == "all" or args.check == p["id"]):
+                res = keymod.check(p["id"], pr["n"])
+                line += f"  -> {'OK' if res['ok'] else 'FAIL'}: {res['detail']}"
+            print(line)
+    print("Chain for provider auto: " + (" -> ".join(default_chain()) or "(nothing configured)"))
+    for s in ProviderState().summary():
+        if not s["available"]:
+            print(f"  blocked: {s['id']} until {s['until']} ({s['reason']})")
+    print("Keys: environment first, then .env in the project folder (never committed). Backup accounts: NAME_2, NAME_3 ... Get them: kdp ui -> Cài đặt.")
     return 0
 
 

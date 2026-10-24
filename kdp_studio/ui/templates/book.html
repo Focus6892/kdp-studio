@@ -41,8 +41,8 @@ async function poll(){
     document.getElementById('thumbs').innerHTML = d.thumbs.map(u => '<a href="' + u + '" target="_blank"><img src="' + u + '" style="max-width:140px"></a>').join('');
     document.getElementById('progress-links').innerHTML = (d.pdf ? '<a class="btn" href="' + d.pdf + '" target="_blank">interior.pdf</a> ' : '') + (d.cover ? '<a class="btn secondary" href="' + d.cover + '" target="_blank">cover_wrap.pdf</a>' : '');
     if (!d.finished) setTimeout(poll, 4000);
-  } catch (e) { document.getElementById('progress-text').textContent = 'không đọc được tiến trình: ' + e; }
-}
+  } catch (e) { document.getElementById('progress-text').textContent = 'mất kết nối với server (' + e.message + '), thử lại sau 5 giây…'; setTimeout(poll, 5000); }
+}  // a server restart must not freeze this box: keep polling until it answers again
 poll();
 </script>
 {% endif %}

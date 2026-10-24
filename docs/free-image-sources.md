@@ -68,3 +68,17 @@ Cần nhớ: giấy phép LoRA ColoringBookRedmond là "bespoke-lora-trained-lic
 
 Bài học: FLUX không có negative prompt — gấp danh sách "Avoid: woman, child…" vào prompt vừa làm bộ lọc của Workers AI chặn vừa dễ gợi đúng thứ cần tránh, nên tool chỉ gửi prompt dương. Gói miễn phí 10.000 neuron/ngày hết sau hai lần build thử + vài image-test (cả model văn bản lẫn FLUX đều trả HTTP 429, mã 4006); đặt lại 00:00 UTC. Từ đó tool có `ProviderQuota`: gặp 429/402 là dừng build ngay, giữ trang đã đạt, ghi lý do vào manifest thay vì thử lại 3 lượt cho từng trang.
 
+## Quota Cloudflare tính ra bao nhiêu ảnh (bảng giá 2026-10, đo 2026-10-24)
+
+Bảng giá Workers AI: 10.000 neuron/ngày miễn phí cho mỗi tài khoản, vượt mức 0,011 USD mỗi 1.000 neuron (gói Workers Paid, vẫn giữ 10.000 neuron miễn phí). FLUX.1 schnell: 4,8 neuron mỗi ô 512×512 và 9,6 neuron mỗi bước; trang giá không nói rõ "mỗi bước" tính trên cả ảnh hay trên từng ô, nhưng số đo khớp cách tính trên từng ô.
+
+| Cấu hình | Neuron/ảnh | Ảnh/ngày/tài khoản |
+|---|---|---|
+| 1024×1024, 6 bước (tool cũ) | 4×4,8 + 4×6×9,6 = 249,6 | ≈ 40 (đo thực tế: hết quota sau ~40 ảnh) |
+| 1024×1024, 4 bước (tool hiện tại) | 4×4,8 + 4×4×9,6 = 172,8 | ≈ 57 |
+| Nếu tính "mỗi bước" trên cả ảnh (ước lượng cũ trong tài liệu này) | 76,8 | 130 — không khớp số đo, bỏ |
+
+Model văn bản dùng cho nút Gợi ý rẻ không đáng kể: llama-3.3-70b-fp8-fast 0,293/2,253 USD mỗi triệu token vào/ra, llama-3.1-8b 0,282/0,827 USD. Một lần gợi ý 30 chủ đề ≈ 2.000 token ≈ dưới 100 neuron.
+
+Khi hết quota, API trả HTTP 429 mã 4006 "you have used up your daily free allocation of 10,000 neurons"; tool khóa tài khoản đó đến 00:00 UTC và chuyển sang tài khoản/nền tảng kế tiếp trong chuỗi dự phòng (xem README, mục "Nhiều tài khoản, nhiều API").
+

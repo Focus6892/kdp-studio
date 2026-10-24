@@ -70,3 +70,19 @@ def test_create_suggest_route(client):
     d = r.get_json()
     assert d["source"] == "offline" and d["fields"]["folder"] == "ocenan" and d["fields"]["title"] == "Ocean Animals Coloring Book"
     assert len(d["fields"]["subjects"].splitlines()) == 24 and len(d["fields"]["keywords"].split(", ")) == 7
+
+
+def test_settings_backup_accounts_and_unblock(client, tmp_path, monkeypatch):
+    monkeypatch.setattr("kdp_studio.interior.failover.state_path", lambda: tmp_path / "state.json")
+    for v in ("CF_ACCOUNT_ID_2", "CF_API_TOKEN_2"):
+        monkeypatch.delenv(v, raising=False)
+    html = client.get("/settings").get_data(as_text=True)
+    assert "Thêm tài khoản dự phòng" in html and "Chuỗi dự phòng" in html
+    r = client.post("/settings/save", data={"CF_ACCOUNT_ID_2": "acc-two", "CF_API_TOKEN_2": "tok-two-abcdef"}, follow_redirects=True)
+    page = r.get_data(as_text=True)
+    assert r.status_code == 200 and "Tài khoản 2" in page and "tok…cdef" in page and "tok-two" not in page
+    assert client.post("/settings/check/cloudflare?n=3").get_json()["detail"].startswith("thiếu")
+    assert client.post("/settings/unblock", data={"profile": "cloudflare#2"}).status_code == 302
+    r = client.post("/settings/remove", data={"provider": "cloudflare", "n": "2"}, follow_redirects=True)
+    assert r.status_code == 200 and "Tài khoản 2" not in r.get_data(as_text=True)
+    assert client.post("/settings/remove", data={"provider": "cloudflare", "n": "1"}).status_code == 400

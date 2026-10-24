@@ -19,7 +19,7 @@
 <label style="margin-left:12px">Khổ <select name="trim"><option>8.5x11</option><option>8x10</option><option>6x9</option></select></label>
 <label style="margin-left:12px">Giá $ <input type="number" step="0.01" name="price" value="9.99" style="width:80px"></label></p>
 <p><label>Nguồn ảnh <select name="provider">{% for p in providers %}<option value="{{ p }}" {% if p == default_provider %}selected{% endif %}>{{ p }}</option>{% endfor %}</select></label>
-<span class="muted">local = GPU của bạn (miễn phí) · spec = bản vẽ vector · cloudflare/openai/google/stability cần key ở Cài đặt</span></p>
+<span class="muted">auto = tự chuyển giữa các tài khoản và nền tảng trong chuỗi dự phòng khi hết quota (xem Cài đặt) · local = GPU của bạn · spec = bản vẽ vector · cloudflare/openai/google/stability cần key</span></p>
 <p><label>Từ khoá (tối đa 7, cách nhau bằng dấu phẩy) <input type="text" name="keywords" placeholder="ocean coloring book, sea animals coloring, easy coloring book kids" style="width:95%"></label></p>
 <p><label>Chủ đề từng trang (mỗi dòng một trang; để trống thì tool tự biến tấu từ theme)<br><textarea name="subjects" rows="8" style="width:95%" placeholder="a smiling whale spouting water&#10;a sea turtle swimming over coral&#10;an octopus holding three shells"></textarea></label></p>
 </div>

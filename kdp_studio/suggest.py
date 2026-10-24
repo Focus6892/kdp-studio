@@ -233,31 +233,48 @@ def _claude(given: dict, images: int, overwrite: bool, api_key: str) -> tuple[di
     return resp.parsed_output.model_dump(), model
 
 
-def _cloudflare(given: dict, images: int, overwrite: bool, account: str, token: str) -> tuple[dict, str]:
+def _cloudflare(given: dict, images: int, overwrite: bool) -> tuple[dict, str]:
+    """Workers AI text models, trying every configured Cloudflare account (cloudflare, cloudflare#2 ...) that is not
+    blocked in the provider state; an account that answers 429 is blocked until its reset time, like for images."""
+    from .interior.failover import ProviderState
+    from .interior.generate import ProviderQuota
+
     body = {"messages": [{"role": "system", "content": SYSTEM + " Respond with one JSON object only - no prose, no code fences - shaped like: " + JSON_SHAPE},
                          {"role": "user", "content": _user_prompt(given, images, overwrite)}],
             "max_tokens": min(4096, 1500 + 24 * images), "temperature": 0.6}
     models = tuple(m for m in (os.environ.get("KDP_STUDIO_CF_TEXT_MODEL"),) if m) + CF_TEXT_MODELS
-    last = "không có model nào trả lời"
-    for model in models:
-        req = urllib.request.Request(f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model}", data=json.dumps(body).encode("utf-8"),
-                                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}, method="POST")
-        try:
-            raw = _request(req, timeout=120, tries=2)
-        except ProviderError as exc:
-            last = _short(exc)
+    state = ProviderState()
+    accounts = [p for p in keymod.profiles("cloudflare") if p["complete"]]
+    last = "chưa có tài khoản Cloudflare nào"
+    for acc in accounts:
+        if not state.is_available(acc["id"]):
+            until = state.exhausted_until(acc["id"])
+            last = f"{acc['id']} tạm khóa đến {until.astimezone():%H:%M %d/%m}" if until else f"{acc['id']} tạm khóa"
             continue
-        try:
-            data = json.loads(raw.decode("utf-8", "replace"))
-        except ValueError:
-            last = f"{model}: phản hồi không phải JSON"
-            continue
-        result = data.get("result") if isinstance(data, dict) else None
-        text = result.get("response") if isinstance(result, dict) else None
-        parsed = text if isinstance(text, dict) else parse_json_object(str(text or ""))
-        if parsed:
-            return parsed, model
-        last = f"{model}: không tách được JSON từ câu trả lời"
+        vals = keymod.profile_values(acc["id"])
+        for model in models:
+            req = urllib.request.Request(f"https://api.cloudflare.com/client/v4/accounts/{vals['CF_ACCOUNT_ID']}/ai/run/{model}", data=json.dumps(body).encode("utf-8"),
+                                         headers={"Authorization": f"Bearer {vals['CF_API_TOKEN']}", "Content-Type": "application/json"}, method="POST")
+            try:
+                raw = _request(req, timeout=120, tries=2)
+            except ProviderQuota as exc:
+                state.mark_exhausted(acc["id"], _short(exc))
+                last = f"{acc['id']}: {_short(exc)}"
+                break  # next account
+            except ProviderError as exc:
+                last = _short(exc)
+                continue  # next model
+            try:
+                data = json.loads(raw.decode("utf-8", "replace"))
+            except ValueError:
+                last = f"{model}: phản hồi không phải JSON"
+                continue
+            result = data.get("result") if isinstance(data, dict) else None
+            text = result.get("response") if isinstance(result, dict) else None
+            parsed = text if isinstance(text, dict) else parse_json_object(str(text or ""))
+            if parsed:
+                return parsed, f"{model.rsplit('/', 1)[-1]} · {acc['id']}"
+            last = f"{model}: không tách được JSON từ câu trả lời"
     raise SuggestError(last)
 
 
@@ -299,10 +316,10 @@ def suggest(form: dict, *, overwrite: bool = False, engine: str | None = None) -
         elif engine == "claude":
             notes.append("Claude: chưa có ANTHROPIC_API_KEY (thêm ở Cài đặt)")
     if llm is None and engine in ("auto", "cloudflare"):
-        if vals.get("CF_ACCOUNT_ID") and vals.get("CF_API_TOKEN"):
+        if any(p["complete"] for p in keymod.profiles("cloudflare")):
             try:
-                llm, model = _cloudflare(given, images, overwrite, vals["CF_ACCOUNT_ID"], vals["CF_API_TOKEN"])
-                source, label = "cloudflare", f"Cloudflare Workers AI ({model.rsplit('/', 1)[-1]})"
+                llm, model = _cloudflare(given, images, overwrite)
+                source, label = "cloudflare", f"Cloudflare Workers AI ({model})"
             except Exception as exc:  # noqa: BLE001
                 notes.append(f"Cloudflare: {_short(exc)}")
         elif engine == "cloudflare":

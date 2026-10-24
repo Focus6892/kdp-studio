@@ -20,6 +20,7 @@ pre{background:#111;color:#e8e8e8;padding:12px;border-radius:8px;overflow:auto;m
 .pill{display:inline-block;padding:1px 8px;border-radius:999px;background:#eee;font-size:12px;margin-right:4px}
 .shots img{max-width:220px;border:1px solid var(--line);border-radius:6px;margin:4px}
 form.inline{display:inline}
+[hidden]{display:none !important}  /* the button/.btn display rule above must not defeat the hidden attribute */
 </style></head>
 <body>
 <header><a class="brand" href="{{ url_for('index') }}">kdp-studio</a>

@@ -174,7 +174,7 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
         art = artifacts_for(b, fmt)
         runs = sorted((p for p in runs_dir.glob(f"*-{b.id}-*") if p.is_dir()), reverse=True)[:5] if runs_dir.is_dir() else []
         return render_template("book.html", idx=idx, e=entry, b=b, fmt=fmt, checklist=checklist, art={k: (str(v) if v else None) for k, v in art.items()}, title_rows=title_rows, runs=[r.name for r in runs],
-                               providers=["placeholder", "spec", "local", "pollinations", "cloudflare", "openai", "google", "stability"], is_coloring=isinstance(b.interior, ColoringInterior))
+                               providers=["auto", "placeholder", "spec", "local", "pollinations", "cloudflare", "openai", "google", "stability"], is_coloring=isinstance(b.interior, ColoringInterior))
 
     @app.post("/book/<int:idx>/build")
     def build(idx: int):
@@ -293,23 +293,51 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
     # ---------------------------------------------------------------- settings: API keys
     @app.get("/settings")
     def settings():
-        return render_template("settings.html", providers=keymod.status_table(), env_file=str(keymod.env_path()), message=request.args.get("m"))
+        from ..interior.failover import ProviderState, default_chain
+
+        state = ProviderState().summary()
+        return render_template("settings.html", providers=keymod.status_table(), env_file=str(keymod.env_path()), message=request.args.get("m"),
+                               chain=default_chain(), chain_var=keymod.CHAIN_VAR, chain_setting=keymod.chain_setting(), state=state, state_by_id={s["id"]: s for s in state})
 
     @app.post("/settings/save")
     def settings_save():
-        written = keymod.save_env({v: request.form.get(v, "") for v in keymod.ALL_VARS})
-        msg = ("Đã lưu: " + ", ".join(written)) if written else "Không có key mới để lưu"
+        written = keymod.save_env({v: request.form.get(v, "") for v in keymod.all_var_names() if v in request.form})
+        cleared = keymod.remove_env([keymod.CHAIN_VAR]) if keymod.CHAIN_VAR in request.form and not request.form.get(keymod.CHAIN_VAR, "").strip() else []
+        msg = ("Đã lưu: " + ", ".join(written)) if written else ("Đã bỏ chuỗi tùy chỉnh, dùng chuỗi tự động" if cleared else "Không có key mới để lưu")
         return redirect(url_for("settings", m=msg))
 
     @app.post("/settings/check/<provider>")
     def settings_check(provider: str):
-        return keymod.check(provider)
+        try:
+            n = int(request.args.get("n", 1))
+        except ValueError:
+            n = 1
+        return keymod.check(provider, n)
+
+    @app.post("/settings/unblock")
+    def settings_unblock():
+        from ..interior.failover import ProviderState
+
+        pid = request.form.get("profile") or None
+        ProviderState().clear(pid)
+        return redirect(url_for("settings", m=f"Đã mở khóa {pid or 'tất cả tài khoản'}"))
+
+    @app.post("/settings/remove")
+    def settings_remove():
+        prov = keymod.provider_by_id(request.form.get("provider", ""))
+        n = int(request.form.get("n", "0") or 0)
+        if prov is None or n < 2:
+            abort(400)
+        removed = keymod.remove_env([keymod.var_name(v, n) for v in prov["vars"]])
+        return redirect(url_for("settings", m=("Đã xoá: " + ", ".join(removed)) if removed else "Không có gì để xoá"))
 
     # ---------------------------------------------------------------- create a new coloring book
     @app.get("/create")
     def create_form():
-        default = "cloudflare" if key_status().get("cloudflare") else "local"  # free Workers AI when its key is set, else the GPU
-        return render_template("create.html", providers=["cloudflare", "local", "spec", "placeholder", "pollinations", "openai", "google", "stability"], default_provider=default, error=None)
+        from ..interior.failover import default_chain
+
+        default = "auto" if default_chain() else "local"  # auto = every configured account, then the GPU; nothing configured -> the GPU alone
+        return render_template("create.html", providers=["auto", "cloudflare", "local", "spec", "placeholder", "pollinations", "openai", "google", "stability"], default_provider=default, error=None)
 
     @app.post("/create")
     def create_book():
@@ -325,7 +353,7 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
                 subjects=[ln.strip() for ln in (f.get("subjects") or "").splitlines() if ln.strip()],
             )
         except Exception as exc:  # noqa: BLE001
-            return render_template("create.html", providers=["local", "spec", "placeholder", "cloudflare", "pollinations", "openai", "google", "stability"], default_provider=f.get("provider") or "local", error=str(exc))
+            return render_template("create.html", providers=["auto", "local", "spec", "placeholder", "cloudflare", "pollinations", "openai", "google", "stability"], default_provider=f.get("provider") or "local", error=str(exc))
         if path.parent.parent not in dirs:
             dirs.append(path.parent.parent)
         for i, b in enumerate(books()):

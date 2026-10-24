@@ -2,49 +2,75 @@
 {% block body %}
 <h1>Cài đặt API key</h1>
 {% if message %}<div class="card"><b>{{ message }}</b></div>{% endif %}
-<div class="card"><p class="muted">Key được ghi vào <code>{{ env_file }}</code> (đã gitignore, không bao giờ đưa lên GitHub). Biến môi trường của shell được ưu tiên hơn file. Chỉ hiện đầu và cuối key; bấm <b>Sửa</b> để nhập key mới, <b>Lưu</b> ghi riêng nền tảng đó.</p></div>
-{% for p in providers %}
-{% set complete = p.vars and p.present.values()|select|list|length == p.vars|length %}
-<div class="card" id="prov-{{ p.id }}">
-<h2>{{ p.name }} {% if p.optional %}<span class="pill">không bắt buộc</span>{% endif %}{% if complete %}<span class="pill" style="background:#dff3e3;color:var(--ok)">đã có key</span>{% endif %}</h2>
-<p class="muted">{{ p.free }}{% if p.url %} · <a href="{{ p.url }}" target="_blank" rel="noopener">Lấy key / tài khoản ↗</a>{% endif %}</p>
-{% if p.vars %}
-<form method="post" action="{{ url_for('settings_save') }}">
-<div id="summary-{{ p.id }}" {% if not complete %}hidden{% endif %}>
-  {% for v in p.vars %}<p><code>{{ v }}</code> <span class="ok">{{ p.masked[v] or 'đã có' }}</span></p>{% endfor %}
+<div class="card"><p class="muted">Key được ghi vào <code>{{ env_file }}</code> (đã gitignore, không bao giờ đưa lên GitHub). Biến môi trường của shell được ưu tiên hơn file. Chỉ hiện đầu và cuối key; bấm <b>Sửa</b> để nhập key mới, <b>Lưu</b> ghi riêng tài khoản đó. Mỗi nền tảng có thể có nhiều tài khoản: tài khoản 2, 3… lưu dưới tên biến có đuôi <code>_2</code>, <code>_3</code>; khi tài khoản đang dùng hết quota, tool tự chuyển sang tài khoản kế tiếp rồi đến nền tảng kế tiếp trong chuỗi dự phòng.</p></div>
+
+<div class="card" id="chain"><h2>Chuỗi dự phòng khi hết quota</h2>
+<p>Đang dùng cho nguồn ảnh <b>auto</b>: {% if chain %}{% for c in chain %}<span class="pill">{{ c }}</span>{% if not loop.last %}→ {% endif %}{% endfor %}{% else %}<span class="muted">chưa có nguồn nào — thêm key Cloudflare bên dưới hoặc cài model cục bộ (<code>kdp local-setup</code>)</span>{% endif %}</p>
+<form method="post" action="{{ url_for('settings_save') }}"><label>Thứ tự tùy chỉnh (bỏ trống = tự động: mọi tài khoản Cloudflare → GPU cục bộ)<br>
+<input type="text" name="{{ chain_var }}" value="{{ chain_setting }}" placeholder="cloudflare, cloudflare#2, local, openai" style="width:min(520px,95%)"></label> <button class="small">Lưu</button></form>
+<p class="muted">Tên nền tảng không có <code>#n</code> nghĩa là mọi tài khoản của nền tảng đó. Sách đặt nguồn cụ thể (ví dụ <code>cloudflare</code>) vẫn tự xoay giữa các tài khoản Cloudflare; nguồn trả tiền (openai, google, stability) chỉ được dùng khi bạn tự ghi vào chuỗi.</p>
+<p class="muted"><b>Lưu ý:</b> gói miễn phí Cloudflare cấp 10.000 neuron/ngày cho <i>mỗi tài khoản</i> (≈ 55 ảnh FLUX 1024² ở 4 bước). Lập nhiều tài khoản của cùng một người để nhân hạn mức miễn phí có thể vi phạm điều khoản Cloudflare và bị khóa; cách an toàn khi cần nhiều hơn là gói Workers Paid (5 USD/tháng, vượt hạn mức trả 0,011 USD mỗi 1.000 neuron, khoảng 0,002 USD một ảnh) hoặc để chuỗi rơi sang GPU cục bộ.</p>
+{% if state %}<table><tr><th>Tài khoản</th><th>Trạng thái</th><th>Ảnh hôm nay</th><th></th></tr>
+{% for s in state %}<tr><td><code>{{ s.id }}</code></td><td>{% if s.available %}<span class="ok">sẵn sàng</span>{% else %}<span class="warn">tạm khóa đến {{ s.until }}</span> <span class="muted">{{ s.reason }}</span>{% endif %}</td><td>{{ s.images_today }}</td>
+<td>{% if not s.available %}<form class="inline" method="post" action="{{ url_for('settings_unblock') }}"><input type="hidden" name="profile" value="{{ s.id }}"><button class="small secondary">Mở khóa</button></form>{% endif %}</td></tr>{% endfor %}</table>
+<p class="muted">"Tạm khóa" là tool tự ghi nhớ sau khi API trả lỗi hết quota (429) hoặc key bị từ chối (401/403); đến giờ ghi trên dòng nó tự thử lại. Mở khóa sớm nếu bạn vừa nâng gói hoặc sửa key.</p>{% endif %}
 </div>
-<div id="fields-{{ p.id }}" {% if complete %}hidden{% endif %}>
-  <ol class="muted" style="margin:4px 0 10px 18px">{% for s in p.steps %}<li>{{ s }}</li>{% endfor %}</ol>
-  {% for v in p.vars %}
-  <p><label><code>{{ v }}</code> {% if p.present[v] %}<span class="muted">hiện tại {{ p.masked[v] }}</span>{% endif %}<br>
-  <input type="password" name="{{ v }}" style="width:min(520px,95%)" placeholder="{% if p.present[v] %}để trống = giữ nguyên{% else %}dán key vào đây{% endif %}" autocomplete="off"></label></p>
-  {% endfor %}
+
+{% for p in providers %}
+<div class="card" id="prov-{{ p.id }}">
+<h2>{{ p.name }} {% if p.optional %}<span class="pill">không bắt buộc</span>{% endif %}</h2>
+<p class="muted">{{ p.free }}{% if p.url %} · <a href="{{ p.url }}" target="_blank" rel="noopener">Lấy key / tài khoản ↗</a>{% endif %}</p>
+<ol class="muted" style="margin:4px 0 10px 18px">{% for s in p.steps %}<li>{{ s }}</li>{% endfor %}</ol>
+{% if p.vars %}
+{% for pr in p.profiles %}{% set dom = p.id ~ '-' ~ pr.n %}{% set st = state_by_id.get(pr.id) %}
+<form method="post" action="{{ url_for('settings_save') }}" style="border-top:1px solid var(--line);padding-top:8px">
+<p><b>Tài khoản {{ pr.n }}</b>
+{% if pr.complete %}<span class="pill" style="background:#dff3e3;color:var(--ok)">đã có key</span>{% endif %}
+{% if st and not st.available %}<span class="pill" style="background:#fdebd3;color:var(--warn)">tạm khóa đến {{ st.until }}</span>{% endif %}
+{% if st and st.images_today %}<span class="muted">· hôm nay {{ st.images_today }} ảnh</span>{% endif %}</p>
+<div id="summary-{{ dom }}" {% if not pr.complete %}hidden{% endif %}>{% for v in p.vars %}<p><code>{{ pr.vars[v] }}</code> <span class="ok">{{ pr.masked[v] or 'đã có' }}</span></p>{% endfor %}</div>
+<div id="fields-{{ dom }}" {% if pr.complete %}hidden{% endif %}>
+{% for v in p.vars %}<p><label><code>{{ pr.vars[v] }}</code> {% if pr.present[v] %}<span class="muted">hiện tại {{ pr.masked[v] }}</span>{% endif %}<br>
+<input type="password" name="{{ pr.vars[v] }}" style="width:min(520px,95%)" placeholder="{% if pr.present[v] %}để trống = giữ nguyên{% else %}dán key vào đây{% endif %}" autocomplete="off"></label></p>{% endfor %}
 </div>
 <p>
-  <button type="button" class="small secondary" id="edit-{{ p.id }}" onclick="toggleEdit('{{ p.id }}')">{% if complete %}Sửa{% else %}Ẩn{% endif %}</button>
-  <button class="small" id="save-{{ p.id }}" {% if complete %}hidden{% endif %}>Lưu</button>
-  <button type="button" class="small secondary" onclick="checkProvider('{{ p.id }}')">Kiểm tra</button>
-  <span id="check-{{ p.id }}" class="muted"></span>
+<button type="button" class="small secondary" id="edit-{{ dom }}" onclick="toggleEdit('{{ dom }}')">{% if pr.complete %}Sửa{% else %}Ẩn{% endif %}</button>
+<button class="small" id="save-{{ dom }}" {% if pr.complete %}hidden{% endif %}>Lưu</button>
+<button type="button" class="small secondary" onclick="checkProvider('{{ p.id }}', {{ pr.n }}, '{{ dom }}')">Kiểm tra</button>
+{% if pr.n > 1 %}<button type="button" class="small secondary" onclick="removeProfile('{{ p.id }}', {{ pr.n }})">Xoá tài khoản này</button>{% endif %}
+<span id="check-{{ dom }}" class="muted"></span>
 </p>
 </form>
+{% endfor %}
+<form method="post" action="{{ url_for('settings_save') }}" style="border-top:1px dashed var(--line);padding-top:8px">
+<button type="button" class="small secondary" id="add-{{ p.id }}" onclick="document.getElementById('new-{{ p.id }}').hidden=false;this.hidden=true">+ Thêm tài khoản dự phòng (tài khoản {{ p.next_n }})</button>
+<div id="new-{{ p.id }}" hidden>
+{% for v in p.vars %}<p><label><code>{{ v }}_{{ p.next_n }}</code><br><input type="password" name="{{ v }}_{{ p.next_n }}" style="width:min(520px,95%)" placeholder="dán key của tài khoản {{ p.next_n }}" autocomplete="off"></label></p>{% endfor %}
+<p><button class="small">Lưu tài khoản {{ p.next_n }}</button> <span class="muted">Tài khoản này được dùng khi các tài khoản trước hết quota.</span></p>
+</div>
+</form>
 {% else %}
-<ol class="muted" style="margin:4px 0 10px 18px">{% for s in p.steps %}<li>{{ s }}</li>{% endfor %}</ol>
 <p><span class="ok">không cần key</span></p>
 {% endif %}
 </div>
 {% endfor %}
+<form id="remove-form" method="post" action="{{ url_for('settings_remove') }}" hidden><input type="hidden" name="provider"><input type="hidden" name="n"></form>
 <script>
-function toggleEdit(id){
-  const f = document.getElementById('fields-' + id), s = document.getElementById('summary-' + id), e = document.getElementById('edit-' + id), sv = document.getElementById('save-' + id);
+function toggleEdit(dom){
+  const f = document.getElementById('fields-' + dom), s = document.getElementById('summary-' + dom), e = document.getElementById('edit-' + dom), sv = document.getElementById('save-' + dom);
   const open = f.hidden;               // fields hidden -> open them for editing
   f.hidden = !open; sv.hidden = !open; s.hidden = open;
   e.textContent = open ? 'Ẩn' : 'Sửa';
 }
-async function checkProvider(id){
-  const el = document.getElementById('check-' + id); el.textContent = 'đang kiểm tra…'; el.className = 'muted';
-  try { const r = await fetch('{{ url_for("settings_check", provider="X") }}'.replace('X', id), {method: 'POST'}); const d = await r.json();
+async function checkProvider(id, n, dom){
+  const el = document.getElementById('check-' + dom); el.textContent = 'đang kiểm tra…'; el.className = 'muted';
+  try { const r = await fetch('{{ url_for("settings_check", provider="X") }}'.replace('X', id) + '?n=' + n, {method: 'POST'}); const d = await r.json();
         el.textContent = d.detail; el.className = d.ok ? 'ok' : 'bad'; }
   catch (e) { el.textContent = 'không gọi được: ' + e; el.className = 'bad'; }
+}
+function removeProfile(id, n){
+  if (!confirm('Xoá key của tài khoản ' + n + ' khỏi .env?')) return;
+  const f = document.getElementById('remove-form'); f.elements['provider'].value = id; f.elements['n'].value = n; f.submit();
 }
 </script>
 {% endblock %}

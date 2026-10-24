@@ -17,6 +17,7 @@ SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,60}$")
 AI_TOOLS = {
     "local": ["Stable Diffusion 1.5 (DreamShaper-8) with ColoringBookRedmond LoRA"],  # provider local
     "cloudflare": ["FLUX.1 schnell via Cloudflare Workers AI"],
+    "auto": ["FLUX.1 schnell via Cloudflare Workers AI", "Stable Diffusion 1.5 (DreamShaper-8) with ColoringBookRedmond LoRA"],  # failover chain: declare every member it may use
     "pollinations": ["FLUX via pollinations.ai"],
     "openai": ["gpt-image-1"],
     "google": ["Imagen 4"],
@@ -66,6 +67,8 @@ def new_coloring_book(root: Path, folder: str, title: str, author: str, theme: s
     source: dict = {"provider": provider, "seed": 7, "size": "1024x1536"}
     if provider == "local":
         source.update(model=model or "Lykon/dreamshaper-8", lora=lora or DEFAULT_LORA, lora_scale=0.8, steps=22, local_size="512x768")
+    elif provider == "auto":  # chain members use their own default models; the LoRA settings apply to the local member when the chain reaches it
+        source.update(lora=lora or DEFAULT_LORA, lora_scale=0.8, steps=22, local_size="512x768")
     elif provider == "spec":
         (book_dir / "drawings").mkdir(exist_ok=True)
         source["path"] = "drawings"

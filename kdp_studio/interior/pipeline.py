@@ -185,6 +185,8 @@ def build_coloring_interior(book: Book, image_limit: int | None = None) -> Inter
         "page_map": result.page_map,
         "fonts": result.fonts,
         "ai_disclosure": book.ai_disclosure(),
+        "providers_used": list(getattr(provider, "used", None) or [provider.name]),  # a failover chain may have used several
+        "provider_chain": provider.describe() if hasattr(provider, "describe") else provider.name,
     }
     write_json(build / "interior_manifest.json", manifest)
     return result
