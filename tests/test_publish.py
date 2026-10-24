@@ -71,6 +71,8 @@ def test_checklist_contains_every_field():
     etext = build_checklist(story, "ebook")
     assert "KDP Select" in etext and "$2.99" in etext
     assert "DRM): No" in etext and "Royalty plan: 70%" in etext and story.ebook.drm is False
+    assert "download consent" in etext and "alternative text = all" in etext
+    assert expand(DEFAULT_SELECTORS["content"]["accessibility_images"], "ebook", value="readable") == ["input[name='data[accessibility][image_reading]'][value='readable']"]
 
 
 def test_diagnose_cover_size_error():

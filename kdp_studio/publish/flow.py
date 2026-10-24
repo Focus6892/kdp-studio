@@ -333,8 +333,15 @@ class Flow:
             self._record(self.s.check(self._c("content", "bleed_yes" if p.bleed else "bleed_no")), "bleed", "yes" if p.bleed else "no")
             self._record(self.s.check(self._c("content", "finish_matte" if p.cover_finish == "matte" else "finish_glossy")), "cover_finish", p.cover_finish)
         else:
-            drm = self.book.ebook.drm
-            self._record(self.s.check(self._c("content", "drm_yes" if drm else "drm_no")), "drm", "yes" if drm else "no")
+            eb = self.book.ebook
+            self._record(self.s.check(self._c("content", "drm_yes" if eb.drm else "drm_no")), "drm", "yes" if eb.drm else "no")
+            if not eb.drm:
+                self._pause(500)
+                if self.s.find(self._c("content", "drm_no_consent")) is not None:  # appears once 'No' is chosen
+                    self._record(self.s.check(self._c("content", "drm_no_consent")), "drm_no_consent", "ticked")
+            access = {"unknown": "unknown", "none": "not_readable", "some": "partially_readable", "all": "readable"}[eb.accessibility_images]
+            if self.s.find(self._c("content", "accessibility_images", value=access)) is not None:
+                self._record(self.s.check(self._c("content", "accessibility_images", value=access)), "accessibility_images", eb.accessibility_images)
         if art["manuscript"]:
             ok = self.s.set_files(self._c("content", "manuscript_input"), art["manuscript"]) or self.s.upload_via_button(self._c("content", "manuscript_button"), art["manuscript"])
             self._record(ok, "manuscript_upload", art["manuscript"].name)

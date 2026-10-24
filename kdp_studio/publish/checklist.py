@@ -83,7 +83,8 @@ def build_checklist(book: Book, fmt: str, quota: QuotaStatus | None = None) -> s
     if fmt == "ebook":
         lines.append("- Manuscript: " + (f"{art['manuscript'].name} ({file_mb(art['manuscript']):.1f} MB)" if art["manuscript"] else "MISSING — build the EPUB first"))
         lines.append("- Cover: upload your own — " + (f"{art['cover'].name}" if art["cover"] else "MISSING — build the cover first"))
-        lines.append(f"- Digital Rights Management (DRM): {'Yes' if book.ebook.drm else 'No'} (KDP requires an answer; it cannot be changed after publishing)")
+        lines.append(f"- Digital Rights Management (DRM): {'Yes' if book.ebook.drm else 'No'} (KDP requires an answer; it cannot be changed after publishing)" + ("; tick the no-DRM download consent" if not book.ebook.drm else ""))
+        lines.append(f"- Accessibility: informative images with alternative text = {book.ebook.accessibility_images}")
         lines.append("- Launch Previewer and check the table of contents, chapter breaks and images.")
     else:
         isbn = {"kdp_free": "Get a free KDP ISBN", "own": f"Use my own ISBN ({book.print_.isbn_number or 'number missing'})", "none": "Publish without an ISBN (low-content only)"}[book.print_.isbn]

@@ -263,6 +263,9 @@ class EbookSpec(BaseModel):
     """Kindle eBook options that have no print counterpart."""
 
     drm: bool = False  # KDP requires an answer; DRM cannot be changed after publishing
+    # KDP accessibility questionnaire: do informative images carry alternative text? (text-only books: 'none' of their images need it,
+    # but answer what is true for your file; 'unknown' leaves KDP's default)
+    accessibility_images: Literal["unknown", "none", "some", "all"] = "unknown"
 
 
 class Pricing(BaseModel):

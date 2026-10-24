@@ -186,7 +186,6 @@ def test_flow_never_fills_a_tab_that_did_not_appear(tmp_path):
     assert "ink_paper" in unfilled and "list_price_us" in unfilled and "territories" in unfilled
     assert any("Content tab never appeared" in n for n in result.notes)
     assert [Path(s).name for s in result.screenshots] == ["01-details.png", "02-content-unmatched.png"]  # the stuck page is kept for selector upkeep
-    assert (tmp_path / "dom" / "dom-content-unmatched.md").is_file() if False else True
     store.close()
 
 

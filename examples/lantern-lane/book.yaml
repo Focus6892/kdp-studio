@@ -41,6 +41,7 @@ print:
 
 ebook:
   drm: false                      # KDP asks on the eBook Content tab; cannot be changed after publishing
+  accessibility_images: all       # KDP accessibility question; this text-only EPUB has no informative images without alt text
 
 interior:
   type: story
