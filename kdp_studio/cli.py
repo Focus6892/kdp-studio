@@ -105,13 +105,17 @@ def cmd_image_test(args) -> int:
     size = _parse_size(source.size)
     print(f"Provider {provider.name} ({getattr(provider, 'model', '')}), {len(prompts)} page(s), size {source.size} -> {out}")
     rows, ok_count = [], 0
+    import time
+
     for p in prompts:
         raw = out / f"{p.index:02d}_raw.png"
+        t0 = time.time()
         try:
             provider.generate(p.prompt, p.index, 0, raw, size)
         except ProviderError as exc:
             print(f"page {p.index}: {exc}")
             return 1
+        seconds = time.time() - t0
         with Image.open(raw) as im:
             art = prepare_art(im, size, interior.cleanup)
         clean = out / f"{p.index:02d}_clean.png"
@@ -119,7 +123,8 @@ def cmd_image_test(args) -> int:
         qa = heuristic_qa(art, interior.qa)
         ok_count += qa.ok
         rows.append({"index": p.index, "subject": p.subject, "prompt": p.prompt, "raw": raw.name, "clean": clean.name, "qa": qa.as_dict()})
-        print(f"page {p.index}: {'OK    ' if qa.ok else 'REJECT'} ink={qa.ink_ratio:.3f} {'; '.join(qa.reasons)} | {p.subject}")
+        rows[-1]["seconds"] = round(seconds, 1)
+        print(f"page {p.index}: {'OK    ' if qa.ok else 'REJECT'} ink={qa.ink_ratio:.3f} {seconds:5.1f}s {'; '.join(qa.reasons)} | {p.subject}")
     thumb_w = 420
     tiles = []
     for r in rows:
@@ -149,7 +154,7 @@ def cmd_local_setup(args) -> int:
 
     if not args.skip_install:
         for cmd in ([sys.executable, "-m", "pip", "install", "--user", "--index-url", f"https://download.pytorch.org/whl/{args.cuda}", "torch"],
-                    [sys.executable, "-m", "pip", "install", "--user", "diffusers", "transformers", "accelerate", "safetensors"]):
+                    [sys.executable, "-m", "pip", "install", "--user", "diffusers", "transformers", "accelerate", "safetensors", "peft"]):
             print("+", " ".join(cmd))
             if subprocess.call(cmd) != 0:
                 print("install failed; see the pip output above")

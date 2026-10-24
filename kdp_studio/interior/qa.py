@@ -41,7 +41,7 @@ def heuristic_qa(art: Image.Image, opts: QAOptions) -> QAResult:
     small = art.resize((max(1, art.width // 4), max(1, art.height // 4)), Image.BOX)
     eroded = small.filter(ImageFilter.MaxFilter(9))  # ink is dark: max() shrinks dark regions
     solid = float((np.asarray(eroded) < 128).mean())
-    if solid > 0.004:
+    if solid > opts.max_solid_black:
         reasons.append(f"large solid black areas ({solid:.3%} of page after erosion)")
 
     return QAResult(ok=not reasons, source="heuristic", reasons=reasons, ink_ratio=ratio)

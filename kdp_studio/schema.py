@@ -110,7 +110,7 @@ class ImageSource(BaseModel):
 
 
 class CleanupOptions(BaseModel):
-    threshold: int = Field(160, ge=1, le=254)
+    threshold: int = Field(128, ge=1, le=254)  # pixels darker than this become ink; 128 keeps diffusion-model gray shading out of the lines
     min_line_px: int = Field(3, ge=1, le=15)
     despeckle: int = Field(1, ge=0, le=5)
     autocontrast: bool = True
@@ -132,6 +132,7 @@ class QAOptions(BaseModel):
     model: str = "claude-opus-5-5"
     min_ink_ratio: float = Field(0.01, ge=0.0, le=1.0)
     max_ink_ratio: float = Field(0.30, ge=0.0, le=1.0)
+    max_solid_black: float = Field(0.015, ge=0.0, le=0.5)  # share of the page that is solid black after erosion (flower centres etc. are fine)
     max_retries: int = Field(2, ge=0, le=5)
 
 

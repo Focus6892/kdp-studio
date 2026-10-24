@@ -457,9 +457,14 @@ class LocalDiffusersProvider:
             import torch
             from diffusers import StableDiffusionPipeline
         except ImportError as exc:  # pragma: no cover - depends on the machine
-            raise ProviderError("local provider needs torch + diffusers: run `kdp local-setup`") from exc
+            raise ProviderError("local provider needs torch + diffusers (+ peft for LoRA): run `kdp local-setup`") from exc
+        if self.lora:
+            try:
+                import peft  # noqa: F401 - diffusers loads LoRA weights through PEFT
+            except ImportError as exc:  # pragma: no cover
+                raise ProviderError("LoRA needs the peft package: python -m pip install --user peft") from exc
         cuda = torch.cuda.is_available()
-        kw = {"torch_dtype": torch.float16 if cuda else torch.float32, "safety_checker": None, "requires_safety_checker": False}
+        kw = {"dtype": torch.float16 if cuda else torch.float32, "safety_checker": None, "requires_safety_checker": False}  # diffusers >= 0.36 ('torch_dtype' before)
         src = Path(self.model)
         pipe = StableDiffusionPipeline.from_single_file(str(src), **kw) if src.suffix == ".safetensors" and src.is_file() else StableDiffusionPipeline.from_pretrained(self.model, **kw)
         if self.lora:
@@ -473,9 +478,13 @@ class LocalDiffusersProvider:
                 pipe.load_lora_weights(repo)
             pipe.fuse_lora(lora_scale=self.lora_scale)
         pipe = pipe.to("cuda" if cuda else "cpu")
-        if cuda:
-            pipe.enable_attention_slicing()
-            pipe.enable_vae_slicing()
+        if cuda:  # memory savers for 4 GB cards; method names moved between diffusers releases
+            if hasattr(pipe, "enable_attention_slicing"):
+                pipe.enable_attention_slicing("max")
+            if hasattr(pipe, "enable_vae_slicing"):
+                pipe.enable_vae_slicing()
+            elif hasattr(getattr(pipe, "vae", None), "enable_slicing"):
+                pipe.vae.enable_slicing()
         else:
             log.warning("no CUDA device: generating on the CPU (minutes per page)")
         pipe.set_progress_bar_config(disable=True)
