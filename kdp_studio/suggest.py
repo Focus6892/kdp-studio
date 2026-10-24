@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from . import keys as keymod
 from .bookgen import SLUG, default_keywords
-from .interior.generate import ProviderError, _request
+from .interior.generate import ProviderError, _request, error_summary
 from .interior.prompts import VARIATIONS
 from .themes import find_theme
 
@@ -97,8 +97,7 @@ def _audience_phrase(audience: str) -> str:
 
 
 def _short(exc: BaseException) -> str:
-    text = str(exc).splitlines()[0] if str(exc) else exc.__class__.__name__
-    return text[:160]
+    return error_summary(exc)
 
 
 def parse_json_object(text: str) -> dict | None:

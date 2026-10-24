@@ -12,7 +12,7 @@ from ..schema import Book, ColoringInterior
 from ..util import ensure_dir, write_json
 from .cleanup import place_on_page, prepare_art
 from .dedupe import Descriptor, HashEntry, HashLibrary, describe, is_duplicate
-from .generate import API_PROVIDERS, ProviderError, ProviderExhausted, make_provider
+from .generate import API_PROVIDERS, ProviderError, ProviderExhausted, ProviderQuota, error_summary, make_provider
 from .layout import InteriorResult, PageSpec, build_page_sequence, render_interior
 from .pagegeom import page_geometry
 from .prompts import build_prompts
@@ -73,7 +73,8 @@ def build_coloring_interior(book: Book, image_limit: int | None = None) -> Inter
 
     accepted: list[AcceptedPage] = []
     rejected: list[RejectedPage] = []
-    for p in prompts:
+    quota_hit: str | None = None
+    for pi, p in enumerate(prompts):
         reasons_all: list[str] = []
         qa_log: list[dict] = []
         done = False
@@ -81,6 +82,11 @@ def build_coloring_interior(book: Book, image_limit: int | None = None) -> Inter
             raw_path = raw_dir / f"{p.index:03d}_{attempt}.png"
             try:
                 provider.generate(p.prompt, p.index, attempt, raw_path, gen_size)
+            except ProviderQuota as exc:  # the API is out of budget for today: stop here and keep what already passed
+                quota_hit = f"provider quota: {error_summary(exc)}"
+                log.error("page %d: %s - stopping the build, %d page(s) accepted so far", p.index, quota_hit, len(accepted))
+                reasons_all.append(quota_hit)
+                break
             except ProviderExhausted as exc:
                 reasons_all.append(str(exc))
                 break
@@ -135,9 +141,12 @@ def build_coloring_interior(book: Book, image_limit: int | None = None) -> Inter
             break
         if not done:
             rejected.append(RejectedPage(p.index, p.prompt, reasons_all))
+        if quota_hit:
+            rejected.extend(RejectedPage(q.index, q.prompt, [quota_hit]) for q in prompts[pi + 1:])
+            break
 
     if not accepted:
-        raise RuntimeError("No page passed QA/dedupe; nothing to lay out")
+        raise RuntimeError(quota_hit or "No page passed QA/dedupe; nothing to lay out")
 
     sequence = build_page_sequence(interior, len(accepted), book.print_.trim, book.print_.paper)
     total = len(sequence)

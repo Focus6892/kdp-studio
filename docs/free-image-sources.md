@@ -57,3 +57,14 @@ Bảng đầy đủ và các đường dẫn nguồn nằm trong lịch sử phi
 
 Cần nhớ: giấy phép LoRA ColoringBookRedmond là "bespoke-lora-trained-license" (Civitai, allowCommercialUse=Rent) — xác nhận trước khi bán sách làm bằng LoRA này; DreamShaper-8 là openrail-m, cho phép thương mại với điều kiện sử dụng có trách nhiệm.
 
+## Đo thực tế 2026-10-24 tối: Cloudflare vs GPU cục bộ trên cùng 30 chủ đề hoa
+
+| | Cloudflare Workers AI, FLUX.1 schnell | GPU GTX 1050 Ti, SD1.5 DreamShaper-8 + ColoringBookRedmond LoRA |
+|---|---|---|
+| Trang đạt | 30/30 | 27/30 (3 trang bị bộ lọc người OWLv2 loại sau 3 lượt) |
+| Thời gian | ~2 giây/trang, cả cuốn vài phút | ~60–70 giây/lượt, cả cuốn hơn một giờ vì sinh lại |
+| Lượt sinh lại | 4 (bộ lọc prompt của Workers AI trả HTTP 400 "NSFW" cho prompt hoa vô hại) | 14 (người trong tranh, một trang quá nhiều mực) |
+| Nét | sạch, to, ít chi tiết — đúng bold & easy | rối hơn, lốm đốm, hay thêm người |
+
+Bài học: FLUX không có negative prompt — gấp danh sách "Avoid: woman, child…" vào prompt vừa làm bộ lọc của Workers AI chặn vừa dễ gợi đúng thứ cần tránh, nên tool chỉ gửi prompt dương. Gói miễn phí 10.000 neuron/ngày hết sau hai lần build thử + vài image-test (cả model văn bản lẫn FLUX đều trả HTTP 429, mã 4006); đặt lại 00:00 UTC. Từ đó tool có `ProviderQuota`: gặp 429/402 là dừng build ngay, giữ trang đã đạt, ghi lý do vào manifest thay vì thử lại 3 lượt cho từng trang.
+

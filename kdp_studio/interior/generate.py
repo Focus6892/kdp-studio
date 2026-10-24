@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import logging
 import math
 import os
@@ -218,6 +219,21 @@ class ProviderError(RuntimeError):
     """The image API refused the request (bad key, moderation, quota...) - the message carries the API's text."""
 
 
+class ProviderQuota(ProviderError):
+    """HTTP 429/402 after retries: the account is out of budget (e.g. Workers AI's 10,000 free neurons a day) - stop instead of retrying every page."""
+
+
+def error_summary(exc: BaseException) -> str:
+    """First line of a provider error without the endpoint URL or the API's JSON wrapper, e.g.
+    'HTTP 429: AiError: you have used up your daily free allocation of 10,000 neurons...'."""
+    text = str(exc).splitlines()[0] if str(exc) else exc.__class__.__name__
+    text = re.sub(r" from https?://[^ ]+?: *", ": ", text)
+    m = re.search(r'"message" *: *"([^"]+)"', text)
+    if m and "{" in text:
+        text = text[: text.find("{")].rstrip() + " " + m.group(1)
+    return text[:220]
+
+
 def _request(req: urllib.request.Request, timeout: int = 180, tries: int = 3) -> bytes:
     """urlopen with retries on 408/409/429/5xx and network hiccups; other 4xx are raised at once."""
     delay = 2.0
@@ -232,7 +248,8 @@ def _request(req: urllib.request.Request, timeout: int = 180, tries: int = 3) ->
                 time.sleep(delay)
                 delay *= 2.5
                 continue
-            raise ProviderError(f"HTTP {exc.code} from {req.full_url}: {detail}") from None
+            cls = ProviderQuota if exc.code in (402, 429) else ProviderError  # out of budget: callers stop instead of retrying every page
+            raise cls(f"HTTP {exc.code} from {req.full_url}: {detail}") from None
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             if attempt + 1 < tries:
                 time.sleep(delay)
