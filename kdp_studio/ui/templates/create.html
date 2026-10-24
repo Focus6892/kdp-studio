@@ -1,0 +1,32 @@
+{% extends "base.html" %}{% block title %}Tạo sách · kdp-studio{% endblock %}
+{% block body %}
+<h1>Tạo sách tô màu mới</h1>
+{% if error %}<div class="card"><span class="bad">{{ error }}</span></div>{% endif %}
+<div class="grid">
+<div class="card" style="grid-column:1/-1">
+<form method="post" action="{{ url_for('create_book') }}">
+<div class="grid">
+<div>
+<p><label>Thư mục (không dấu, không cách) <input type="text" name="folder" required placeholder="ocean-animals" style="width:95%"></label></p>
+<p><label>Tiêu đề <input type="text" name="title" required placeholder="Ocean Animals Coloring Book" style="width:95%"></label></p>
+<p><label>Phụ đề <input type="text" name="subtitle" placeholder="30 Bold and Easy Sea Creatures for Kids and Adults" style="width:95%"></label></p>
+<p><label>Tác giả (bút danh) <input type="text" name="author" required placeholder="Mia Hartwell" style="width:95%"></label></p>
+<p><label>Chủ đề (theme) <input type="text" name="theme" required placeholder="bold and easy ocean animals" style="width:95%"></label></p>
+<p><label>Đối tượng <input type="text" name="audience" value="adults and kids, beginners" style="width:95%"></label></p>
+</div>
+<div>
+<p><label>Số trang tô màu <input type="number" name="images" value="30" min="12" max="120" style="width:80px"></label>
+<label style="margin-left:12px">Khổ <select name="trim"><option>8.5x11</option><option>8x10</option><option>6x9</option></select></label>
+<label style="margin-left:12px">Giá $ <input type="number" step="0.01" name="price" value="9.99" style="width:80px"></label></p>
+<p><label>Nguồn ảnh <select name="provider">{% for p in providers %}<option value="{{ p }}" {% if p == default_provider %}selected{% endif %}>{{ p }}</option>{% endfor %}</select></label>
+<span class="muted">local = GPU của bạn (miễn phí) · spec = bản vẽ vector · cloudflare/openai/google/stability cần key ở Cài đặt</span></p>
+<p><label>Từ khoá (tối đa 7, cách nhau bằng dấu phẩy) <input type="text" name="keywords" placeholder="ocean coloring book, sea animals coloring, easy coloring book kids" style="width:95%"></label></p>
+<p><label>Chủ đề từng trang (mỗi dòng một trang; để trống thì tool tự biến tấu từ theme)<br><textarea name="subjects" rows="8" style="width:95%" placeholder="a smiling whale spouting water&#10;a sea turtle swimming over coral&#10;an octopus holding three shells"></textarea></label></p>
+</div>
+</div>
+<p><button>Tạo book.yaml và mở trang sách</button> <span class="muted">Sau đó bấm Build để sinh ruột, bìa và preflight; tiến trình hiện theo từng trang.</span></p>
+</form>
+</div>
+</div>
+<div class="card"><h2>Demo</h2><p class="muted">Cuốn mẫu <b>bold-easy-flowers</b> trong danh sách Sách dùng đúng luồng này (30 chủ đề hoa, model cục bộ + LoRA). Mở trang sách của nó để xem ô "Tiến trình tạo ruột": số trang đã xong trên tổng số, số lần sinh lại, giây mỗi trang và ảnh thu nhỏ các trang mới nhất; cuối cùng là liên kết PDF ruột và bìa.</p></div>
+{% endblock %}

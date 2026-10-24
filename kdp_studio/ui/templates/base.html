@@ -23,7 +23,7 @@ form.inline{display:inline}
 </style></head>
 <body>
 <header><a class="brand" href="{{ url_for('index') }}">kdp-studio</a>
-<a href="{{ url_for('index') }}">Sách</a><a href="{{ url_for('queue') }}">Hàng đợi</a><a href="{{ url_for('runs') }}">Lần chạy</a><a href="{{ url_for('license_page') }}">License</a>
+<a href="{{ url_for('index') }}">Sách</a><a href="{{ url_for('create_form') }}">Tạo sách</a><a href="{{ url_for('queue') }}">Hàng đợi</a><a href="{{ url_for('runs') }}">Lần chạy</a><a href="{{ url_for('settings') }}">Cài đặt</a><a href="{{ url_for('license_page') }}">License</a>
 <span style="margin-left:auto;font-size:13px;opacity:.8">{{ now }}
 {% if license.available %}{% if license.valid %}· license OK{% else %}· <span style="color:#ffb4a8">chưa kích hoạt license</span>{% endif %}{% endif %}</span></header>
 <main>{% block body %}{% endblock %}</main>

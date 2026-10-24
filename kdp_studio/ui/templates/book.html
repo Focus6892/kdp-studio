@@ -21,6 +21,31 @@
 {% if runs %}<p class="muted">Lần chạy gần đây: {% for r in runs %}<a href="{{ url_for('runs') }}#{{ r }}">{{ r }}</a> {% endfor %}</p>{% endif %}
 </div>
 </div>
+{% if is_coloring %}
+<div class="card" id="progress-card"><h2>Tiến trình tạo ruột</h2>
+<div style="background:#eee;border-radius:8px;height:18px;overflow:hidden"><div id="bar" style="background:var(--ok);height:100%;width:0%"></div></div>
+<p id="progress-text" class="muted">đang đọc…</p>
+<div class="shots" id="thumbs"></div>
+<p id="progress-links"></p>
+</div>
+<script>
+async function poll(){
+  try {
+    const r = await fetch('{{ url_for("progress", idx=idx) }}'); const d = await r.json();
+    const pct = d.total ? Math.min(100, Math.round(100 * d.done / d.total)) : 0;
+    document.getElementById('bar').style.width = pct + '%';
+    document.getElementById('progress-text').textContent =
+      (d.total ? d.done + ' / ' + d.total + ' trang' : d.done + ' trang') + ' · ' + d.retries + ' lần sinh lại' +
+      (d.seconds_per_page ? ' · ~' + d.seconds_per_page + ' giây/trang' : '') + (d.updated ? ' · trang mới nhất ' + d.updated : '') +
+      (d.finished ? ' · ĐÃ XONG' : '');
+    document.getElementById('thumbs').innerHTML = d.thumbs.map(u => '<a href="' + u + '" target="_blank"><img src="' + u + '" style="max-width:140px"></a>').join('');
+    document.getElementById('progress-links').innerHTML = (d.pdf ? '<a class="btn" href="' + d.pdf + '" target="_blank">interior.pdf</a> ' : '') + (d.cover ? '<a class="btn secondary" href="' + d.cover + '" target="_blank">cover_wrap.pdf</a>' : '');
+    if (!d.finished) setTimeout(poll, 4000);
+  } catch (e) { document.getElementById('progress-text').textContent = 'không đọc được tiến trình: ' + e; }
+}
+poll();
+</script>
+{% endif %}
 <div class="card"><h2>Checklist nhập tay ({{ fmt }}) {% for f in b.formats %}{% if f != fmt %}· <a href="{{ url_for('book', idx=idx, fmt=f) }}">{{ f }}</a>{% endif %}{% endfor %}</h2>
 <pre style="background:#fafafa;color:#222;border:1px solid var(--line)">{{ checklist }}</pre></div>
 {% endblock %}

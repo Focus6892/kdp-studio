@@ -68,11 +68,20 @@ def _pdf_pages(path: Path) -> int:
 
 
 def cmd_keys(args) -> int:
-    from .env import KEY_VARS, key_status
+    from . import keys as keymod
 
-    for provider, present in key_status().items():
-        print(f"  {provider:10} {KEY_VARS[provider]:18} {'set' if present else 'missing'}")
-    print("Keys are read from the environment, then from .env in the project folder (never committed).")
+    if args.set:
+        updates = dict(kv.split("=", 1) for kv in args.set if "=" in kv)
+        written = keymod.save_env(updates)
+        print("saved to .env: " + (", ".join(written) or "nothing (unknown names or empty values)"))
+    for p in keymod.status_table():
+        state = ", ".join(f"{v}={'set' if ok else 'missing'}" for v, ok in p["present"].items()) or "no key needed"
+        line = f"  {p['id']:12} {state}"
+        if args.check and (args.check == "all" or args.check == p["id"]) and p["vars"]:
+            res = keymod.check(p["id"])
+            line += f"  -> {'OK' if res['ok'] else 'FAIL'}: {res['detail']}"
+        print(line)
+    print("Keys: environment first, then .env in the project folder (never committed). Get them: kdp ui -> Cài đặt.")
     return 0
 
 
@@ -915,7 +924,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("book")
     p.set_defaults(func=cmd_validate)
 
-    p = sub.add_parser("keys", help="which image/LLM API keys are available (names only)")
+    p = sub.add_parser("keys", help="which image/LLM API keys are available (names only); --check calls each platform; --set NAME=VALUE writes .env")
+    p.add_argument("--check", nargs="?", const="all", help="live-check one provider id or all")
+    p.add_argument("--set", action="append", help="NAME=VALUE to store in .env (repeatable)")
     p.set_defaults(func=cmd_keys)
     p = sub.add_parser("image-test", help="generate a few coloring pages with the real image provider and compare raw vs cleaned")
     p.add_argument("book")

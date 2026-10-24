@@ -21,6 +21,7 @@ from pathlib import Path
 
 from flask import Flask, abort, redirect, render_template, request, send_file, url_for
 
+from .. import keys as keymod
 from ..env import key_status
 from ..paths import data_path, project_root
 from ..publish.checklist import artifacts_for, build_checklist
@@ -131,6 +132,7 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
     store_path = data_path("publishing", "publish.sqlite")
     runs_dir = data_path("publishing", "runs")
     app.config["BOOK_DIRS"] = dirs
+    app.config["BOOKS_ROOT"] = project_root() / "books"  # new books created from the UI land here
 
     def store() -> PublishStore:
         return PublishStore(store_path)
@@ -287,6 +289,77 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
         if j is None:
             abort(404)
         return {"status": j["status"], "log": j["log"][-400:], "returncode": j["returncode"]}
+
+    # ---------------------------------------------------------------- settings: API keys
+    @app.get("/settings")
+    def settings():
+        return render_template("settings.html", providers=keymod.status_table(), env_file=str(keymod.env_path()), message=request.args.get("m"))
+
+    @app.post("/settings/save")
+    def settings_save():
+        written = keymod.save_env({v: request.form.get(v, "") for v in keymod.ALL_VARS})
+        msg = ("Đã lưu: " + ", ".join(written)) if written else "Không có key mới để lưu"
+        return redirect(url_for("settings", m=msg))
+
+    @app.post("/settings/check/<provider>")
+    def settings_check(provider: str):
+        return keymod.check(provider)
+
+    # ---------------------------------------------------------------- create a new coloring book
+    @app.get("/create")
+    def create_form():
+        return render_template("create.html", providers=["local", "spec", "placeholder", "cloudflare", "pollinations", "openai", "google", "stability"], default_provider="local", error=None)
+
+    @app.post("/create")
+    def create_book():
+        from ..bookgen import new_coloring_book
+
+        f = request.form
+        try:
+            path = new_coloring_book(
+                root=app.config["BOOKS_ROOT"], folder=f.get("folder", ""), title=f.get("title", ""), subtitle=f.get("subtitle") or None, author=f.get("author", ""),
+                theme=f.get("theme", ""), audience=f.get("audience") or "adults", images=int(f.get("images") or 30), trim=f.get("trim") or "8.5x11",
+                price=float(f.get("price") or 9.99), provider=f.get("provider") or "local",
+                keywords=[k.strip() for k in (f.get("keywords") or "").split(",") if k.strip()],
+                subjects=[ln.strip() for ln in (f.get("subjects") or "").splitlines() if ln.strip()],
+            )
+        except Exception as exc:  # noqa: BLE001
+            return render_template("create.html", providers=["local", "spec", "placeholder", "cloudflare", "pollinations", "openai", "google", "stability"], default_provider=f.get("provider") or "local", error=str(exc))
+        if path.parent.parent not in dirs:
+            dirs.append(path.parent.parent)
+        for i, b in enumerate(books()):
+            if Path(b["path"]).resolve() == path.resolve():
+                return redirect(url_for("book", idx=i))
+        return redirect(url_for("index"))
+
+    # ---------------------------------------------------------------- build progress (works for builds started anywhere)
+    @app.get("/book/<int:idx>/progress")
+    def progress(idx: int):
+        _, b = book_at(idx)
+        build = b.build_dir
+        total = None
+        if (build / "prompts.json").is_file():
+            try:
+                total = len(json.loads((build / "prompts.json").read_text(encoding="utf-8")))
+            except Exception:  # noqa: BLE001
+                total = None
+        if total is None and isinstance(b.interior, ColoringInterior):
+            total = b.interior.images
+        art = sorted((build / "art").glob("*.png"), key=lambda p: p.stat().st_mtime) if (build / "art").is_dir() else []
+        raw = list((build / "raw").glob("*.png")) if (build / "raw").is_dir() else []
+        seconds = None
+        if len(art) >= 2:
+            seconds = round((art[-1].stat().st_mtime - art[0].stat().st_mtime) / (len(art) - 1), 1)
+        manifest = (build / "interior_manifest.json").is_file()
+        pdf = build / "interior.pdf"
+        finished = manifest and pdf.is_file() and (not art or pdf.stat().st_mtime >= art[-1].stat().st_mtime)
+        return {
+            "total": total, "done": len(art), "attempts": len(raw), "retries": max(0, len(raw) - len(art)), "seconds_per_page": seconds,
+            "finished": bool(finished), "pdf": url_for("file_view", p=str(pdf)) if pdf.is_file() else None,
+            "cover": url_for("file_view", p=str(build / "cover_wrap.pdf")) if (build / "cover_wrap.pdf").is_file() else None,
+            "thumbs": [url_for("file_view", p=str(p)) for p in art[-12:]],
+            "updated": dt.datetime.fromtimestamp(art[-1].stat().st_mtime).strftime("%H:%M:%S") if art else None,
+        }
 
     @app.get("/license")
     def license_page():
