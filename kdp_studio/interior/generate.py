@@ -402,6 +402,9 @@ class CloudflareProvider:
     name = "cloudflare"
 
     def __init__(self, model: str | None, size: str, negative_prompt: str | None = None):
+        if model and not model.startswith("@cf/"):
+            log.warning("cloudflare: model %r is not a Workers AI id; using flux-1-schnell", model)
+            model = None
         self.model = model or "@cf/black-forest-labs/flux-1-schnell"
         self.negative_prompt = negative_prompt
         self.account = _key("CF_ACCOUNT_ID")

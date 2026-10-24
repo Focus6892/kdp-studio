@@ -90,10 +90,10 @@ def cmd_image_test(args) -> int:
     from PIL import Image
 
     from .interior.cleanup import prepare_art
-    from .interior.generate import APPROX_COST_USD, ProviderError, make_provider
+    from .interior.generate import API_PROVIDERS, APPROX_COST_USD, ProviderError, make_provider
     from .interior.pipeline import _parse_size
     from .interior.prompts import build_prompts
-    from .interior.qa import heuristic_qa
+    from .interior.qa import content_qa, heuristic_qa
     from .util import write_json
 
     book = load_book(args.book)
@@ -102,6 +102,8 @@ def cmd_image_test(args) -> int:
         print("image-test works on coloring books (interior.type: coloring)")
         return 2
     overrides = {k: v for k, v in {"provider": args.provider, "model": args.model, "lora": args.lora}.items() if v}
+    if args.provider and args.provider != interior.source.provider and not args.model:
+        overrides["model"] = None  # the book's model id belongs to another provider; use the new provider's default
     source = interior.source.model_copy(update=overrides)
     out = Path(args.out) if args.out else book.build_dir / "image-test"
     out.mkdir(parents=True, exist_ok=True)
@@ -130,6 +132,10 @@ def cmd_image_test(args) -> int:
         clean = out / f"{p.index:02d}_clean.png"
         art.save(clean)
         qa = heuristic_qa(art, interior.qa)
+        if qa.ok and interior.qa.reject_people and provider.name in API_PROVIDERS:  # same people/nudity screen as a real build
+            cq = content_qa(raw, interior.qa)
+            if cq is not None and not cq.ok:
+                qa = cq
         ok_count += qa.ok
         rows.append({"index": p.index, "subject": p.subject, "prompt": p.prompt, "raw": raw.name, "clean": clean.name, "qa": qa.as_dict()})
         rows[-1]["seconds"] = round(seconds, 1)
