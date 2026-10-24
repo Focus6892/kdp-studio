@@ -57,7 +57,7 @@ def build_coloring_interior(book: Book, image_limit: int | None = None) -> Inter
     prompts = build_prompts(interior, n)
     write_json(build / "prompts.json", [p.model_dump() for p in prompts])
 
-    provider = make_provider(interior.source, book.book_dir)
+    provider = make_provider(interior.source, book.book_dir, negative_prompt=interior.negative_prompt)
     gen_size = _parse_size(interior.source.size)
 
     planned_total = interior.planned_pages(n)

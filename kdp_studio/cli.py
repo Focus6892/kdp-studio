@@ -67,6 +67,82 @@ def _pdf_pages(path: Path) -> int:
     return len(PdfReader(str(path)).pages)
 
 
+def cmd_keys(args) -> int:
+    from .env import KEY_VARS, key_status
+
+    for provider, present in key_status().items():
+        print(f"  {provider:10} {KEY_VARS[provider]:18} {'set' if present else 'missing'}")
+    print("Keys are read from the environment, then from .env in the project folder (never committed).")
+    return 0
+
+
+def cmd_image_test(args) -> int:
+    """Generate a few pages with the configured image provider and show raw vs cleaned side by side."""
+    from PIL import Image
+
+    from .interior.cleanup import prepare_art
+    from .interior.generate import APPROX_COST_USD, ProviderError, make_provider
+    from .interior.pipeline import _parse_size
+    from .interior.prompts import build_prompts
+    from .interior.qa import heuristic_qa
+    from .util import write_json
+
+    book = load_book(args.book)
+    interior = book.interior
+    if not isinstance(interior, ColoringInterior):
+        print("image-test works on coloring books (interior.type: coloring)")
+        return 2
+    overrides = {k: v for k, v in {"provider": args.provider, "model": args.model}.items() if v}
+    source = interior.source.model_copy(update=overrides)
+    out = Path(args.out) if args.out else book.build_dir / "image-test"
+    out.mkdir(parents=True, exist_ok=True)
+    try:
+        provider = make_provider(source, book.book_dir, negative_prompt=interior.negative_prompt)
+    except ProviderError as exc:
+        print(f"error: {exc}")
+        return 1
+    prompts = build_prompts(interior, args.n)
+    size = _parse_size(source.size)
+    print(f"Provider {provider.name} ({getattr(provider, 'model', '')}), {len(prompts)} page(s), size {source.size} -> {out}")
+    rows, ok_count = [], 0
+    for p in prompts:
+        raw = out / f"{p.index:02d}_raw.png"
+        try:
+            provider.generate(p.prompt, p.index, 0, raw, size)
+        except ProviderError as exc:
+            print(f"page {p.index}: {exc}")
+            return 1
+        with Image.open(raw) as im:
+            art = prepare_art(im, size, interior.cleanup)
+        clean = out / f"{p.index:02d}_clean.png"
+        art.save(clean)
+        qa = heuristic_qa(art, interior.qa)
+        ok_count += qa.ok
+        rows.append({"index": p.index, "subject": p.subject, "prompt": p.prompt, "raw": raw.name, "clean": clean.name, "qa": qa.as_dict()})
+        print(f"page {p.index}: {'OK    ' if qa.ok else 'REJECT'} ink={qa.ink_ratio:.3f} {'; '.join(qa.reasons)} | {p.subject}")
+    thumb_w = 420
+    tiles = []
+    for r in rows:
+        pair = []
+        for name in (r["raw"], r["clean"]):
+            with Image.open(out / name) as im:
+                im = im.convert("RGB")
+                h = max(1, round(im.height * thumb_w / im.width))
+                pair.append(im.resize((thumb_w, h)))
+        tiles.append(pair)
+    row_h = max(max(a.height, b.height) for a, b in tiles)
+    sheet = Image.new("RGB", (thumb_w * 2 + 30, (row_h + 10) * len(tiles) + 10), "white")
+    for i, (a, b) in enumerate(tiles):
+        sheet.paste(a, (10, 10 + i * (row_h + 10)))
+        sheet.paste(b, (thumb_w + 20, 10 + i * (row_h + 10)))
+    sheet_path = out / "contact_sheet.png"
+    sheet.save(sheet_path)
+    write_json(out / "image_test.json", {"provider": provider.name, "model": getattr(provider, "model", None), "size": source.size, "pages": rows})
+    cost = APPROX_COST_USD.get(provider.name, 0.0) * len(rows)
+    print(f"\n{ok_count}/{len(rows)} pass the heuristic QA; approx cost ${cost:.2f}; raw | cleaned sheet: {sheet_path}")
+    return 0
+
+
 def cmd_build(args) -> int:
     book = load_book(args.book)
     build = book.build_dir
@@ -732,6 +808,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("book")
     p.set_defaults(func=cmd_validate)
 
+    p = sub.add_parser("keys", help="which image/LLM API keys are available (names only)")
+    p.set_defaults(func=cmd_keys)
+    p = sub.add_parser("image-test", help="generate a few coloring pages with the real image provider and compare raw vs cleaned")
+    p.add_argument("book")
+    p.add_argument("--n", type=int, default=3, help="number of pages (default 3)")
+    p.add_argument("--provider", choices=["placeholder", "folder", "openai", "google", "stability"], help="override interior.source.provider")
+    p.add_argument("--model", help="override interior.source.model (e.g. gpt-image-1, imagen-4.0-generate-001, core)")
+    p.add_argument("--out", help="output folder (default build/image-test)")
+    p.set_defaults(func=cmd_image_test)
     p = sub.add_parser("build", help="build interior (+ EPUB for story books) + cover and run preflight")
     p.add_argument("book")
     p.add_argument("--images", type=int, help="limit the number of coloring pages (quick test builds)")
@@ -981,6 +1066,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    from .env import load_dotenv
+
+    load_dotenv()  # API keys from the project's .env (gitignored); shell variables win
     for stream in (sys.stdout, sys.stderr):  # Windows consoles default to cp1252
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")

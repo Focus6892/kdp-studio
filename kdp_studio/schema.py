@@ -90,7 +90,7 @@ class PrintSpec(BaseModel):
 
 
 class ImageSource(BaseModel):
-    provider: Literal["placeholder", "folder", "openai"] = "placeholder"
+    provider: Literal["placeholder", "folder", "openai", "google", "stability"] = "placeholder"
     path: str | None = None
     model: str | None = None
     size: str = "1024x1536"
@@ -224,7 +224,7 @@ Interior = Annotated[Union[ColoringInterior, StoryInterior], Field(discriminator
 
 
 class ArtSource(BaseModel):
-    provider: Literal["placeholder", "file", "openai"] = "placeholder"
+    provider: Literal["placeholder", "file", "openai", "google", "stability"] = "placeholder"
     path: str | None = None
     prompt: str | None = None
     model: str | None = None

@@ -16,7 +16,7 @@ from reportlab.pdfgen import canvas as rl_canvas
 
 from .. import specs
 from ..fonts import find_font
-from ..interior.generate import OpenAIImagesProvider, draw_line_art
+from ..interior.generate import API_PROVIDERS, draw_line_art, make_provider
 from ..interior.layout import register_font
 from ..schema import Book, ColoringInterior
 from ..util import ensure_dir, hex_to_rgb
@@ -69,13 +69,13 @@ def load_art(book: Book, size: tuple[int, int], out_dir: Path) -> Image.Image:
     if art.provider == "placeholder":
         rng = random.Random(f"cover:{book.id}:{art.seed}")
         return placeholder_cover_art(rng, size, book.cover.palette.accent, book.cover.palette.background)
-    if art.provider == "openai":
+    if art.provider in API_PROVIDERS:
         theme = book.interior.theme if isinstance(book.interior, ColoringInterior) else book.metadata.title
         prompt = art.prompt or (
             f"Book cover illustration for a coloring book about {theme}: vibrant fully colored artwork, "
             "clean composition with calm empty space in the upper third, no text, no letters, no watermark"
         )
-        provider = OpenAIImagesProvider(model=art.model, size=art.size)
+        provider = make_provider(art, book.book_dir, negative_prompt="text, letters, watermark, logo, signature")
         path = provider.generate(prompt, 0, 0, ensure_dir(out_dir) / "cover_art_raw.png", size)
         with Image.open(path) as im:
             return im.convert("RGB")
