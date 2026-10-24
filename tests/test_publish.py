@@ -89,6 +89,11 @@ def test_diagnose_cover_size_error():
 def test_selectors_expand_and_override(tmp_path):
     assert expand(["#data-{fmt}-title"], "paperback") == ["#data-print-book-title"]
     assert expand(["#data-{fmt}-keywords-{i}"], "ebook", i=3) == ["#data-ebook-keywords-3"]
+    # the live Kindle eBook Details form (2026-10-24) uses ids without a format segment
+    ebook_title = expand(DEFAULT_SELECTORS["details"]["title"], "ebook")
+    assert "#data-title" in ebook_title and ebook_title[0] == "#data-ebook-title"
+    assert "#data-keywords-6" in expand(DEFAULT_SELECTORS["details"]["keyword"], "ebook", i=6)
+    assert "#data-language-native" in expand(DEFAULT_SELECTORS["details"]["language"], "ebook")
     assert expand(["input[name='data[{fmt_u}][keywords][{i}]']"], "paperback", i=2) == ["input[name='data[print_book][keywords][2]']"]
     override = tmp_path / "sel.yaml"
     override.write_text("details:\n  title: ['#my-title']\nbookshelf_url: https://example.test/shelf\n", encoding="utf-8")
