@@ -202,7 +202,7 @@ KDP gỡ sách có nội dung "excessively reused, recycled, or repeated within 
 - **Prompt đa dạng theo chủ đề**: `interior.prompts_with_claude: true` + `ANTHROPIC_API_KEY` (hoặc `ant auth login`). Model mặc định `claude-opus-5-5`, structured output qua `client.messages.parse`.
 - **Niche & metadata**: `kdp niche run` và `kdp metadata generate` tự dùng Claude khi có credential (mở rộng keyword, concept cards, sinh và sửa metadata); thêm `--no-claude` để chạy hoàn toàn offline.
 - **QA thị giác từng trang**: `interior.qa.claude: true`. Mỗi trang được chấm: line art sạch, có chữ rác, mảng đen lớn, lỗi hình, rủi ro IP, phù hợp tuổi.
-- **Sinh ảnh**: `source.provider: openai` / `cover.art.provider: openai` + `OPENAI_API_KEY` (gọi Images API, chưa kiểm thử trong repo này; sửa `model`/`size` theo tài liệu hiện hành). Hoặc sinh ảnh bằng ComfyUI/Midjourney rồi dùng `provider: folder`.
+- **Sinh ảnh**: `interior.source.provider` và `cover.art.provider` nhận `openai` (gpt-image-1, `OPENAI_API_KEY`), `google` (Imagen 4 qua Gemini API, `GEMINI_API_KEY`) hoặc `stability` (Stable Image core/ultra/sd3, `STABILITY_API_KEY`). Key đặt trong file `.env` ở thư mục dự án (đã gitignore, xem `.env.example`) hoặc biến môi trường; `kdp keys` cho biết key nào đang có. Thử trước vài trang với `kdp image-test examples/bold-easy-flowers/book.yaml --n 3 --provider openai`: ảnh gốc và ảnh đã làm sạch nằm cạnh nhau trong `build/image-test/contact_sheet.png`, kèm QA và ước tính chi phí. Ba provider viết theo tài liệu công khai và chưa chạy với key thật trong repo này. Hoặc sinh ảnh bằng ComfyUI/Midjourney rồi dùng `provider: folder`.
 - Mọi ảnh do model sinh ra là **AI-generated** theo định nghĩa KDP, kể cả khi đã chỉnh sửa nhiều → đặt `provenance` đúng.
 
 ## Giới hạn hiện tại
