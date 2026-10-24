@@ -136,8 +136,12 @@ DEFAULT_SELECTORS: dict = {
     # price inputs are #price-input-<currency> (the EUR id repeats across seven marketplaces, so aria-labels win).
     # The eBook variant (KDP Select, royalty plan) has not been probed yet - those candidates are still guesses.
     "pricing": {
-        "page_markers": ["#worldwide-rights", "input[name='territory-selection-type']", "#price-input-usd", "button:has-text('Publish Your')", "input[id*='us-price']"],
+        "page_markers": ["#worldwide-rights", "input[name='territory-selection-type']", "#price-input-usd", "button:has-text('Publish Your')", "input[id*='us-price']",
+                         # eBook Pricing (classic layout, verified 2026-10-24)
+                         "input[name='data[digital][royalty_rate]-radio']", "#data-is-select"],
         "all_territories": ["#worldwide-rights", "input[name='territory-selection-type'][value='worldwide']", "#data-print-book-pricing-rights-all-territories", "#data-ebook-pricing-rights-all-territories", {"role": "radio", "name": "All territories"}],
+        # eBook: territories are accordion rows (links), preselected to worldwide by KDP; clicked when the radio form is absent
+        "all_territories_row": ["a.a-accordion-row:has-text('All territories')"],
         "individual_territories": ["#individual-territories", "input[name='territory-selection-type'][value='individual']"],
         "primary_marketplace": ["#primary-marketplace", {"role": "combobox", "name": "Primary marketplace"}, "select[name*='home_marketplace']"],
         # distribution columns: "Amazon" = on sale in that Amazon store (keep all ticked); Expanded Distribution exists for .com and .co.uk only
@@ -146,14 +150,14 @@ DEFAULT_SELECTORS: dict = {
         "expanded_distribution_all": ["[role='checkbox'][aria-label='Enroll all marketplaces in Expanded Distribution program']"],
         "expanded_distribution": ["[role='checkbox'][aria-label='Enroll in Expanded Distribution program for Amazon.com']", "#data-pricing-print-expanded-distribution", "input[name*='expanded']"],
         "expanded_distribution_uk": ["[role='checkbox'][aria-label='Enroll in Expanded Distribution program for Amazon.co.uk']"],
-        "price_us": ["#price-input-usd", "input[aria-label='Price for Amazon.com in USD']", "#data-pricing-print-us-price-input", "#data-pricing-ebook-us-price-input", "input[id*='us-price']"],
+        "price_us": ["#price-input-usd", "input[aria-label='Price for Amazon.com in USD']", "input[name='data[digital][channels][amazon][US][price_vat_inclusive]']", "#data-pricing-print-us-price-input", "#data-pricing-ebook-us-price-input", "input[id*='us-price']"],
         "price_inputs": ["input[aria-label^='Price for Amazon']", "input[id^='price-input-']"],
         # one per non-US marketplace, right after its price input; clicked only for rows KDP left empty
         "base_on_us": ["a[aria-label='Base this price on Amazon.com'], [role='button'][aria-label='Base this price on Amazon.com']"],
         # eBook royalty plan (unverified candidates): 70% needs a list price between 2.99 and 9.99 USD
-        "royalty_70": ["input[name*='royalty'][value='70']", "input[name*='royalty'][value='SEVENTY']", "#royalty-plan-70", "#data-ebook-royalty-plan-70", "label:has-text('70%')"],
-        "royalty_35": ["input[name*='royalty'][value='35']", "input[name*='royalty'][value='THIRTY_FIVE']", "#royalty-plan-35", "#data-ebook-royalty-plan-35", "label:has-text('35%')"],
-        "kdp_select": ["#data-ebook-kdp-select-enroll", "input[name*='kdp-select']", "input[name*='kdpSelect']", "[role='checkbox'][aria-label*='KDP Select']", "label:has-text('Enroll my eBook in KDP Select')"],
+        "royalty_70": ["input[name='data[digital][royalty_rate]-radio'][value='70_PERCENT']", "input[name*='royalty'][value='70']", "#royalty-plan-70", "label:has-text('70%')"],
+        "royalty_35": ["input[name='data[digital][royalty_rate]-radio'][value='35_PERCENT']", "input[name*='royalty'][value='35']", "#royalty-plan-35", "label:has-text('35%')"],
+        "kdp_select": ["#data-is-select", "#data-ebook-kdp-select-enroll", "input[name*='kdp-select']", "input[name*='kdpSelect']", "[role='checkbox'][aria-label*='KDP Select']", "label:has-text('Enroll my eBook in KDP Select')"],
         "back": ["button:has-text('Back to Content')"],
         "save_draft": ["button:has-text('Save as Draft')", "#save-announce"],
         # located for the page marker and screenshots only - the flow never clicks it

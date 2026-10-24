@@ -385,7 +385,10 @@ class Flow:
 
     def fill_pricing(self) -> None:
         pr = self.book.pricing
-        self._record(self.s.check(self._c("pricing", "all_territories")), "territories", "All territories (worldwide rights)")
+        ok = self.s.check(self._c("pricing", "all_territories"))
+        if not ok and self.s.find(self._c("pricing", "all_territories_row")) is not None:
+            ok = self.s.click(self._c("pricing", "all_territories_row"))  # eBook accordion row (KDP preselects worldwide)
+        self._record(ok, "territories", "All territories (worldwide rights)")
         self._choose_primary_marketplace()
         if self.fmt == "ebook":
             price = pr.ebook_list_price or pr.list_price
@@ -422,6 +425,12 @@ class Flow:
         except Exception:  # noqa: BLE001
             tag = ""
         label = {"amazon.com": "Amazon.com"}.get(self.book.pricing.marketplace, self.book.pricing.marketplace)
+        try:
+            if loc.is_disabled():  # eBook Pricing repeats the Details choice read-only
+                self._record(True, "primary_marketplace", f"{label} (set on Details)")
+                return
+        except Exception:  # noqa: BLE001
+            pass
         if tag == "select":
             ok = self.s.select(cands, label_equals=label, label_contains=label)
         else:
