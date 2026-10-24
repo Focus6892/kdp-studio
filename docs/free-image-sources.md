@@ -44,3 +44,15 @@ Không miễn phí (10/2026): Hugging Face Inference Providers (tài khoản fre
 ## Báo cáo gốc của agent nghiên cứu (tiếng Anh)
 
 Bảng đầy đủ và các đường dẫn nguồn nằm trong lịch sử phiên làm việc 2026-10-24; các con số trên được chép nguyên từ báo cáo đó.
+
+## Kết quả đo thực tế trong tool (2026-10-24, GTX 1050 Ti)
+
+| Hướng | Kết quả |
+|---|---|
+| Vector spec (Claude soạn) | 3/3 trang qua QA, nét sạch tuyệt đối, 0 giây GPU |
+| Pollinations ẩn danh | 0/3 qua QA: ảnh 630×940, watermark, mảng đen lớn |
+| local DreamShaper-8, prompt chung | bó hoa cúc rất đẹp (sau khi hạ ngưỡng làm sạch xuống 128), mandala quá rậm; ~70 s/trang |
+| local DreamShaper-8 + LoRA ColoringBookAF + subjects | 2/3 qua QA (cúc, tulip đẹp), 1 trang LoRA tự chèn người → QA loại, pipeline sinh lại |
+
+Cần nhớ: giấy phép LoRA ColoringBookRedmond là "bespoke-lora-trained-license" (Civitai, allowCommercialUse=Rent) — xác nhận trước khi bán sách làm bằng LoRA này; DreamShaper-8 là openrail-m, cho phép thương mại với điều kiện sử dụng có trách nhiệm.
+

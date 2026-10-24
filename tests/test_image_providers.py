@@ -52,7 +52,7 @@ def test_provider_bodies_are_shaped_for_each_api(monkeypatch):
 
 
 def test_missing_key_is_a_clear_error(monkeypatch):
-    for var in ("OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "STABILITY_API_KEY"):
+    for var in ("OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "STABILITY_API_KEY", "KDP_STUDIO_FORCE_PROVIDER"):
         monkeypatch.delenv(var, raising=False)
     for provider in ("openai", "google", "stability"):
         with pytest.raises(ProviderError):

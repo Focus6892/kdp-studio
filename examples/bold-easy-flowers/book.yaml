@@ -43,6 +43,40 @@ print:
 interior:
   type: coloring
   theme: "bold and easy flowers"
+  # One concrete subject per page (30). Written for the free local model; the vector drawings in drawings/ are an alternative source.
+  subjects:
+    - "a single large daisy flower with twelve wide petals, two leaves on the stem"
+    - "three tulips in a simple round pot"
+    - "a big sunflower head facing forward, a few large leaves"
+    - "a simple rose bloom seen from above, thick outlines"
+    - "a lotus flower floating on two round lily pads"
+    - "a tulip with two long leaves in a tall vase"
+    - "a bunch of five daisies tied with a ribbon"
+    - "a hibiscus flower with a long stamen and three leaves"
+    - "a cherry blossom branch with six large blossoms"
+    - "a poppy flower with four big petals and a round seed pod"
+    - "a watering can with three flowers growing out of the spout"
+    - "a flower wreath made of eight simple blossoms and leaves"
+    - "a potted cactus with one big blooming flower on top"
+    - "a lily with six pointed petals and curled tips"
+    - "a basket holding four large round flowers"
+    - "a heart shape filled with five simple flowers"
+    - "a bluebell stem with five hanging bell flowers"
+    - "a dandelion puff with a few seeds floating away"
+    - "a butterfly resting on a single large flower"
+    - "a bee hovering over a big open daisy"
+    - "a garden row of four flowers of different heights"
+    - "a flower in a teacup on a saucer"
+    - "a morning glory vine with three trumpet flowers"
+    - "a peony bloom with layered wide petals"
+    - "a tulip bouquet wrapped in paper with a bow"
+    - "a sunflower in a tall glass jar"
+    - "a pansy with five large rounded petals and a face-like centre"
+    - "a wildflower meadow strip with six simple flowers and tall grass"
+    - "a magnolia branch with three big open flowers"
+    - "a mandala made of six large petals around a circle, bold and simple"
+  style_prompt: "ColoringBookAF, coloring book page, bold clean black outlines, simple shapes, large areas to color, no shading, no gray, pure white background, no text, no watermark, centered composition"
+  negative_prompt: "color, shading, gradients, gray fill, text, letters, numbers, watermark, signature, blurry, photo, person, woman, man, face, portrait, child, animal except the named one, tiny details, cross-hatching"
   audience: "adults and seniors, beginners, low vision"
   images: 30
   single_sided: true
@@ -50,7 +84,12 @@ interior:
   front_matter: [title, copyright, belongs_to, test_colors]
   back_matter: [thank_you, blank]
   source:
-    provider: placeholder      # placeholder | folder | openai
+    provider: local            # free, on your GPU: SD 1.5 (DreamShaper-8) + coloring-book LoRA; other options: spec (drawings/), placeholder, cloudflare, openai, google, stability
+    model: Lykon/dreamshaper-8
+    lora: "artificialguybr/coloringbook-redmond-1-5v-coloring-book-lora-for-liberteredmond-sd-1-5:ColoringBookRedmond15V-LiberteRedmond-ColoringBookAF.safetensors"
+    lora_scale: 0.8            # the LoRA's trigger word ColoringBookAF is in style_prompt
+    steps: 22                  # ~55 s per page on a GTX 1050 Ti
+    local_size: 512x768
     seed: 7
     size: 1024x1536
   cleanup:

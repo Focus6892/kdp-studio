@@ -210,7 +210,7 @@ log = logging.getLogger(__name__)
 
 # rough list prices per image in USD (2026-10), only for the running estimate printed by image-test / build
 APPROX_COST_USD = {"spec": 0.0, "local": 0.0, "openai": 0.07, "google": 0.04, "stability": 0.03, "pollinations": 0.0, "cloudflare": 0.0, "placeholder": 0.0, "folder": 0.0, "file": 0.0}
-API_PROVIDERS = ("openai", "google", "stability", "pollinations", "cloudflare")
+API_PROVIDERS = ("openai", "google", "stability", "pollinations", "cloudflare", "local")  # network or GPU: replaced by KDP_STUDIO_FORCE_PROVIDER in tests
 FREE_PROVIDERS = ("pollinations", "cloudflare")
 
 
@@ -505,6 +505,10 @@ class LocalDiffusersProvider:
 
 
 def make_provider(source: ImageSource | ArtSource, base_dir: Path, negative_prompt: str | None = None) -> ImageProvider:
+    forced = os.environ.get("KDP_STUDIO_FORCE_PROVIDER")  # tests/CI: keep example books off the GPU and the network
+    if forced and source.provider in API_PROVIDERS and forced in ("placeholder", "spec"):  # only network/GPU providers are replaced
+        log.info("KDP_STUDIO_FORCE_PROVIDER=%s overrides provider %s", forced, source.provider)
+        source = source.model_copy(update={"provider": forced})
     if source.provider == "placeholder":
         return PlaceholderProvider(seed=source.seed)
     if source.provider == "folder":

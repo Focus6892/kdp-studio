@@ -146,6 +146,7 @@ class ColoringInterior(BaseModel):
     audience: str = "adults"
     style_prompt: str = DEFAULT_STYLE_PROMPT
     negative_prompt: str = DEFAULT_NEGATIVE_PROMPT
+    subjects: list[str] = Field(default_factory=list)  # one concrete drawing subject per page; beats the generic theme templates
     images: int = Field(30, ge=1, le=400)
     single_sided: bool = True
     back_page: Literal["blank", "test_colors"] = "blank"

@@ -129,7 +129,20 @@ def claude_prompts(interior: ColoringInterior, n: int, model: str) -> list[PageP
     return out
 
 
+def subject_prompts(interior: ColoringInterior, n: int) -> list[PagePrompt]:
+    """book.yaml lists the subjects itself (written by you or by Claude in chat): cycle through them."""
+    subs = interior.subjects
+    out: list[PagePrompt] = []
+    for i in range(n):
+        base = subs[i % len(subs)]
+        subject = base if i < len(subs) else f"{base} (variation {i // len(subs) + 1})"
+        out.append(PagePrompt(index=i, subject=subject, prompt=_compose(subject, interior)))
+    return out
+
+
 def build_prompts(interior: ColoringInterior, n: int) -> list[PagePrompt]:
+    if interior.subjects:
+        return subject_prompts(interior, n)
     if interior.prompts_with_claude:
         got = claude_prompts(interior, n, interior.prompts_model)
         if got:
