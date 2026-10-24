@@ -30,10 +30,12 @@ DEFAULT_SELECTORS: dict = {
     # Bookshelf: the yellow "+ Create new title or series" button is a plain anchor to /create
     "create_button": ["a[href*='/create']:has-text('Create')", "a:has-text('Create new title')", "text=Create new title or series", "a:has-text('+ Create')", "button:has-text('Create')"],
     # /create page: one entry per format (anchors into title-setup/<format>/new/details)
+    # /create page: one yellow button per format. Exact button text first (the card heading 'Kindle eBook' is NOT a
+    # button - clicking it does nothing, which stalled the 2026-10-24 eBook run), then link/button roles and hrefs.
     "format_choice": {
-        "ebook": ["a[href*='title-setup/kindle/new/details']", "a:has-text('Create eBook')", "text=Kindle eBook"],
-        "paperback": ["a[href*='title-setup/paperback/new/details']", "a:has-text('Create paperback')", "text=Paperback"],
-        "hardcover": ["a[href*='title-setup/hardcover/new/details']", "a:has-text('Create hardcover')", "text=Hardcover"],
+        "ebook": ['text="Create eBook"', {"role": "link", "name": "Create eBook"}, {"role": "button", "name": "Create eBook"}, "a[href*='title-setup/kindle/new/details']", "input[value='Create eBook']"],
+        "paperback": ['text="Create paperback"', {"role": "link", "name": "Create paperback"}, {"role": "button", "name": "Create paperback"}, "a[href*='title-setup/paperback/new/details']", "input[value='Create paperback']"],
+        "hardcover": ['text="Create hardcover"', {"role": "link", "name": "Create hardcover"}, {"role": "button", "name": "Create hardcover"}, "a[href*='title-setup/hardcover/new/details']", "input[value='Create hardcover']"],
     },
     "details": {
         # eBook Details (verified 2026-10-24): the Kindle form drops the format segment -> #data-title, #data-keywords-0, ...

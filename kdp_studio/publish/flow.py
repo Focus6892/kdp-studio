@@ -182,6 +182,7 @@ class Flow:
             self._gate("Could not find the Create button. Click '+ Create' on your Bookshelf yourself, then press Enter:")
         if self.s.wait_for(self._c("details", "title"), timeout_s=5):
             return
+        self._dump("create")  # the format-choice page, so a changed button can be fixed from the run folder
         if not self.s.click(self.sel["format_choice"][self.fmt]):
             self._gate(f"Could not find the '{self.fmt}' choice. Pick it yourself, then press Enter:")
         if not self._await(self._c("details", "title"), timeout_s=60):
