@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% block title %}Sách · kdp-studio{% endblock %}
+{% block body %}
+<h1>Sách trong dự án</h1>
+<div class="card">
+<table><tr><th>#</th><th>Tên</th><th>Loại</th><th>Định dạng</th><th>Ảnh</th><th>Build</th><th>Preflight</th><th>KDP</th><th></th></tr>
+{% for b in books %}
+<tr>
+<td>{{ loop.index0 }}</td>
+<td>{% if b.error %}<span class="bad">{{ b.folder }}</span><div class="muted">{{ b.error }}</div>{% else %}<a href="{{ url_for('book', idx=loop.index0) }}"><b>{{ b.title }}</b></a><div class="muted">{{ b.id }} · {{ b.folder }}</div>{% endif %}</td>
+<td>{{ b.type }}</td>
+<td>{% for f in b.formats or [] %}<span class="pill">{{ f }}</span>{% endfor %}</td>
+<td>{% if b.type == 'coloring' %}{{ b.provider }}{% if b.drawings %} · {{ b.drawings }} bản vẽ{% endif %} · {{ b.images }} trang{% else %}truyện{% endif %}</td>
+<td>{% if b.interior %}<span class="ok">ruột</span>{% else %}<span class="muted">ruột</span>{% endif %} {% if b.cover %}<span class="ok">bìa</span>{% else %}<span class="muted">bìa</span>{% endif %} {% if b.ebook %}<span class="ok">epub</span>{% endif %}</td>
+<td>{% if b.preflight == 'PASS' %}<span class="ok">PASS</span>{% elif b.preflight %}<span class="bad">{{ b.preflight }}</span>{% else %}<span class="muted">chưa</span>{% endif %}</td>
+<td>{% for f in b.formats or [] %}{% set t = titles.get((b.id, f)) %}{% if t %}<div>{{ f }}: <b>{{ t.status }}</b>{% if t.asin %} {{ t.asin }}{% endif %}</div>{% endif %}{% endfor %}</td>
+<td>{% if not b.error %}<form class="inline" method="post" action="{{ url_for('build', idx=loop.index0) }}"><button class="small">Build</button></form>{% endif %}</td>
+</tr>
+{% endfor %}
+</table>
+<p class="muted">Thư mục đang quét: {% for d in dirs %}<code>{{ d }}</code> {% endfor %} — thêm thư mục khác bằng <code>kdp ui --books D:\path</code>.</p>
+</div>
+<div class="grid">
+<div class="card"><h2>Quota KDP tuần này</h2>
+<table><tr><th>Định dạng</th><th>Đã tạo</th><th>Đã nộp</th><th>Còn</th></tr>
+{% for f, q in quota.items() %}<tr><td>{{ f }}</td><td>{{ q.created }}/{{ q.limit }}</td><td>{{ q.submitted }}/{{ q.limit }}</td><td>{% if q.can_start %}<span class="ok">{{ q.remaining_created }} tạo / {{ q.remaining_submitted }} nộp</span>{% else %}<span class="bad">hết{% if q.kdp_blocked %} (KDP báo){% endif %}</span>{% endif %}</td></tr>{% endfor %}
+</table><p class="muted">Reset Chủ nhật 00:00 UTC (07:00 giờ Việt Nam). {{ queued }} tựa đang chờ trong <a href="{{ url_for('queue') }}">hàng đợi</a>.</p></div>
+<div class="card"><h2>API key (chỉ hiện có/không)</h2>
+<table>{% for name, present in keys.items() %}<tr><td>{{ name }}</td><td>{% if present %}<span class="ok">có</span>{% else %}<span class="muted">không</span>{% endif %}</td></tr>{% endfor %}</table>
+<p class="muted">Đặt key trong <code>.env</code> của dự án (xem <code>.env.example</code>). Provider <b>spec</b> và <b>local</b> không cần key.</p></div>
+<div class="card"><h2>Việc đang chạy</h2>
+{% if jobs %}<table>{% for j in jobs %}<tr><td><a href="{{ url_for('job', job_id=j.id) }}">{{ j.title }}</a></td><td>{{ j.started }}</td><td>{% if j.status == 'running' %}<span class="warn">đang chạy</span>{% elif j.status == 'done' %}<span class="ok">xong</span>{% else %}<span class="bad">lỗi</span>{% endif %}</td></tr>{% endfor %}</table>{% else %}<p class="muted">Chưa có.</p>{% endif %}</div>
+</div>
+{% endblock %}

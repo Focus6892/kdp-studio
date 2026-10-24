@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% block title %}{{ job.title }} · kdp-studio{% endblock %}
+{% block body %}
+<h1>{{ job.title }} <span id="status" class="warn">{{ job.status }}</span></h1>
+<p class="muted"><code>{{ job.cmd|join(' ') }}</code> · bắt đầu {{ job.started }} · <a href="{{ url_for('index') }}">về danh sách</a></p>
+<pre id="log">{{ job.log|join('\n') }}</pre>
+<script>
+const el = document.getElementById('log'), st = document.getElementById('status');
+async function tick(){
+  const r = await fetch('{{ url_for("job_log", job_id=job.id) }}'); const d = await r.json();
+  el.textContent = d.log.join('\n'); el.scrollTop = el.scrollHeight;
+  st.textContent = d.status; st.className = d.status === 'done' ? 'ok' : (d.status === 'failed' ? 'bad' : 'warn');
+  if (d.status === 'running') setTimeout(tick, 1500);
+}
+tick();
+</script>
+{% endblock %}

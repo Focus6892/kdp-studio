@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block title %}Lần chạy · kdp-studio{% endblock %}
+{% block body %}
+<h1>Các lần chạy publish</h1>
+{% for r in rows %}
+<div class="card" id="{{ r.name }}"><h2>{{ r.name }} · {% if r.status in ['draft', 'submitted'] %}<span class="ok">{{ r.status }}</span>{% elif r.status in ['blocked', 'error'] %}<span class="bad">{{ r.status }}</span>{% else %}<span class="warn">{{ r.status }}</span>{% endif %}</h2>
+<p class="muted">điền {{ r.filled }} field · nhập tay {{ r.unfilled }}{% if r.notes %} · {{ r.notes|join(' / ') }}{% endif %}</p>
+<div class="shots">{% for s in r.shots %}<a href="{{ url_for('run_file', name=r.name, fname='screenshots/' ~ s) }}" target="_blank"><img src="{{ url_for('run_file', name=r.name, fname='screenshots/' ~ s) }}" alt="{{ s }}" title="{{ s }}"></a>{% endfor %}</div>
+<p class="muted"><a href="{{ url_for('run_file', name=r.name, fname='checklist.md') }}">checklist.md</a>{% if r.status != '-' %} · <a href="{{ url_for('run_file', name=r.name, fname='flow.json') }}">flow.json</a>{% endif %}</p>
+</div>
+{% else %}<div class="card"><p class="muted">Chưa có lần chạy nào.</p></div>{% endfor %}
+{% endblock %}

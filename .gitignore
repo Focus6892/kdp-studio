@@ -18,3 +18,7 @@ examples/**/metadata/
 /monitor/
 .kdp-profile/
 browser-profile/
+
+# license signing key (owner only)
+*.pem
+license_private*

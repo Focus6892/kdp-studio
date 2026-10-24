@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><title>{% block title %}kdp-studio{% endblock %}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--ink:#222;--muted:#666;--line:#ddd;--accent:#c94c4c;--ok:#2a7a3b;--warn:#b26a00;--bad:#b3261e}
+body{margin:0;font:15px/1.45 system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:#1f2a44;color:#fff;padding:10px 20px;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+header a{color:#fff;text-decoration:none;font-weight:600;opacity:.9}header a:hover{opacity:1}
+header .brand{font-size:18px;color:#e0a458}
+main{max-width:1180px;margin:18px auto;padding:0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+h1{font-size:22px;margin:4px 0 12px}h2{font-size:17px;margin:0 0 10px}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600;font-size:13px}
+.ok{color:var(--ok);font-weight:600}.warn{color:var(--warn);font-weight:600}.bad{color:var(--bad);font-weight:600}.muted{color:var(--muted)}
+button,.btn{background:var(--accent);color:#fff;border:0;border-radius:7px;padding:7px 12px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block}
+button.secondary,.btn.secondary{background:#444}button.small{padding:4px 8px;font-size:13px}
+input[type=text],input[type=number],select,textarea{border:1px solid #bbb;border-radius:6px;padding:6px 8px;font:inherit}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+pre{background:#111;color:#e8e8e8;padding:12px;border-radius:8px;overflow:auto;max-height:70vh;font-size:13px}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;background:#eee;font-size:12px;margin-right:4px}
+.shots img{max-width:220px;border:1px solid var(--line);border-radius:6px;margin:4px}
+form.inline{display:inline}
+</style></head>
+<body>
+<header><a class="brand" href="{{ url_for('index') }}">kdp-studio</a>
+<a href="{{ url_for('index') }}">Sách</a><a href="{{ url_for('queue') }}">Hàng đợi</a><a href="{{ url_for('runs') }}">Lần chạy</a><a href="{{ url_for('license_page') }}">License</a>
+<span style="margin-left:auto;font-size:13px;opacity:.8">{{ now }}
+{% if license.available %}{% if license.valid %}· license OK{% else %}· <span style="color:#ffb4a8">chưa kích hoạt license</span>{% endif %}{% endif %}</span></header>
+<main>{% block body %}{% endblock %}</main>
+</body></html>

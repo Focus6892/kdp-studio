@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% block title %}Publish · kdp-studio{% endblock %}
+{% block body %}
+<h1>Đã mở cửa sổ console</h1>
+<div class="card"><p>Lệnh đang chạy trong cửa sổ riêng:</p><pre style="background:#fafafa;color:#222;border:1px solid var(--line)">{{ command }}</pre>
+<p>Trình duyệt Edge sẽ hiện lên. Theo dõi các cổng duyệt trong cửa sổ console: Details (chọn category nếu cần) → Content (tên công cụ AI, tick xác nhận, Previewer) → Rights &amp; Pricing (kiểm tra giá rồi gõ <code>s</code> để tool lưu nháp, hoặc tự bấm Publish rồi gõ <code>p</code>).</p>
+<p><a class="btn secondary" href="{{ back }}">Quay lại</a> <a class="btn" href="{{ url_for('runs') }}">Xem lần chạy</a></p></div>
+{% endblock %}

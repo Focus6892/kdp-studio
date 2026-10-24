@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% block title %}License · kdp-studio{% endblock %}
+{% block body %}
+<h1>License</h1>
+{% if message %}<div class="card"><b>{{ message }}</b></div>{% endif %}
+<div class="card">
+{% if not info.available %}<p class="muted">Module license chưa được bật trong bản này (không yêu cầu key).</p>
+{% else %}
+<p>Trạng thái: {% if info.valid %}<span class="ok">đã kích hoạt</span>{% else %}<span class="bad">chưa kích hoạt</span>{% endif %}
+{% if info.licensee %} · cấp cho <b>{{ info.licensee }}</b>{% endif %}{% if info.expires %} · hết hạn {{ info.expires }}{% endif %}{% if info.error %} · <span class="bad">{{ info.error }}</span>{% endif %}</p>
+<p>Mã máy này (gửi cho người cấp key): <code>{{ machine }}</code></p>
+<form method="post" action="{{ url_for('license_activate') }}"><label>Dán license key <textarea name="token" rows="3" style="width:100%"></textarea></label><br><button>Kích hoạt</button></form>
+{% endif %}
+</div>
+{% endblock %}

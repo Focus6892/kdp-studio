@@ -153,6 +153,24 @@ python -m kdp_studio publish diagnose-cover --message "Your expected cover size 
 
 Bộ selector mặc định đã được đối chiếu với tài khoản KDP thật (paperback, 2026-10-23) trên cả ba tab: Details còn dùng id `data-print-book-*` và CKEditor cho mô tả; Content và Rights & Pricing là giao diện React mới — radio theo `name`/`value`, combobox ARIA cho Trim Size, AI và Primary marketplace, checkbox ARIA chỉ nhận diện bằng `aria-label` (cột Amazon / Expanded Distribution), ô giá `#price-input-<currency>` kèm nút "Base this price on Amazon.com" mà tool chỉ bấm cho ô KDP bỏ trống. Luồng eBook mới chạy trên mock. Amazon đổi DOM không báo trước: khi lệch, chạy `probe` (hoặc `probe --auto --follow`) rồi chỉnh file YAML. Field nào không điền được sẽ được liệt kê để bạn nhập tay; categories luôn chọn tay trong hộp thoại của KDP. Luồng điền được test trên bản mock của ba trang KDP (`tests/mock_kdp/`, dựng theo đúng cấu trúc đã probe).
 
+## Giao diện web — `kdp ui`
+
+```bash
+python -m kdp_studio ui                     # mở http://127.0.0.1:8765 : sách, build, image-test, hàng đợi, lần chạy, quota, key, license
+python -m kdp_studio ui --books "D:\sach"   # quét thêm thư mục chứa <cuốn>/book.yaml
+```
+
+Trang **Hàng đợi** cho phép tick nhiều cuốn, chọn định dạng và ưu tiên rồi "Chạy tựa kế tiếp còn quota": tool mở một cửa sổ console chạy `kdp publish next` để các cổng duyệt (Details, Content, Pricing) vẫn hiện cho bạn như khi chạy tay. Build và image-test chạy nền với log trực tiếp trong trình duyệt.
+
+## Chuyển sang máy khác và license
+
+1. Trên máy đích cài Python 3.11+ rồi chạy `install.ps1` (thêm `-UI` cho giao diện web, `-Local` cho model ảnh cục bộ). Script cài gói ở chế độ người dùng, tạo `.env` từ `.env.example`.
+2. Máy đích chạy `python -m kdp_studio license machine-id` và gửi mã cho bạn.
+3. Bạn (chủ) cấp key bằng khoá riêng nằm ngoài repo: `python -m kdp_studio license issue --key <thư mục>/license_private.pem --to "Tên" --machine <mã máy> --days 365`.
+4. Máy đích kích hoạt: `python -m kdp_studio license activate <key>` (hoặc dán vào trang License của giao diện web). Thiếu key hợp lệ, mọi lệnh ngoài `license` đều từ chối chạy.
+
+Khoá công khai nằm trong `kdp_studio/license_pub.py` (tạo bằng `kdp license keygen`, đã commit); khoá riêng chỉ ở máy chủ sở hữu. Máy của chủ đặt `KDP_STUDIO_DEV=1` trong `.env` để bỏ qua kiểm tra. Đây là cơ chế chữ ký Ed25519 gắn mã máy, đủ chặn sao chép tuỳ tiện; mã nguồn Python vẫn đọc được nên không phải DRM tuyệt đối.
+
 ## Sau xuất bản — `kdp monitor`
 
 ```bash

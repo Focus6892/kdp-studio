@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% block title %}{{ b.metadata.title }} · kdp-studio{% endblock %}
+{% block body %}
+<h1>{{ b.metadata.full_title }}</h1>
+<p class="muted">{{ b.id }} · {{ b.type }} · <code>{{ e.path }}</code></p>
+<div class="grid">
+<div class="card"><h2>Build</h2>
+<p>Ruột: {% if e.interior %}<span class="ok">có</span>{% else %}<span class="muted">chưa</span>{% endif %} · Bìa: {% if e.cover %}<span class="ok">có</span>{% else %}<span class="muted">chưa</span>{% endif %} · Preflight: {% if e.preflight == 'PASS' %}<span class="ok">PASS</span>{% elif e.preflight %}<span class="bad">{{ e.preflight }}</span>{% else %}<span class="muted">chưa</span>{% endif %}</p>
+{% if is_coloring %}<p>Nguồn ảnh: <b>{{ e.provider }}</b> · {{ e.images }} trang{% if e.drawings %} · {{ e.drawings }} bản vẽ vector trong <code>drawings/</code>{% endif %}</p>{% endif %}
+<form method="post" action="{{ url_for('build', idx=idx) }}">{% if is_coloring %}<label>Số trang thử <input type="number" name="images" min="1" max="400" style="width:80px" placeholder="tất cả"></label>{% endif %} <button>Build ruột + bìa + preflight</button></form>
+{% if is_coloring %}<form method="post" action="{{ url_for('image_test', idx=idx) }}" style="margin-top:8px"><label>Thử provider <select name="provider">{% for p in providers %}<option value="{{ p }}" {% if p == e.provider %}selected{% endif %}>{{ p }}</option>{% endfor %}</select></label> <label>số trang <input type="number" name="n" value="3" min="1" max="12" style="width:60px"></label> <button class="secondary">Image test</button></form>{% endif %}
+{% if art.manuscript %}<p class="muted">Ruột: <a href="{{ url_for('file_view', p=art.manuscript) }}">{{ art.manuscript }}</a></p>{% endif %}
+{% if art.cover %}<p class="muted">Bìa: <a href="{{ url_for('file_view', p=art.cover) }}">{{ art.cover }}</a></p>{% endif %}
+</div>
+<div class="card"><h2>Đăng lên KDP</h2>
+<form method="post" action="{{ url_for('publish_one', idx=idx) }}">
+<label>Định dạng <select name="fmt">{% for f in b.formats %}<option value="{{ f }}" {% if f == fmt %}selected{% endif %}>{{ f }}</option>{% endfor %}</select></label><br>
+<label>Tiếp tục bản nháp đã có (URL tab Details) <input type="text" name="resume_url" style="width:95%" placeholder="https://kdp.amazon.com/en_US/title-setup/.../details"></label><br>
+<button style="margin-top:8px">Mở cửa sổ publish run</button></form>
+<p class="muted">Mở một cửa sổ console chạy <code>kdp publish run</code>: trình duyệt hiện lên, mỗi tab dừng cho bạn xem, tool không bấm Publish.</p>
+{% if title_rows %}<table>{% for t in title_rows %}<tr><td>{{ t.fmt }}</td><td><b>{{ t.status }}</b></td><td>{{ t.asin or '' }}</td><td class="muted">{{ (t.created_ts or '')[:10] }}</td></tr>{% endfor %}</table>{% endif %}
+{% if runs %}<p class="muted">Lần chạy gần đây: {% for r in runs %}<a href="{{ url_for('runs') }}#{{ r }}">{{ r }}</a> {% endfor %}</p>{% endif %}
+</div>
+</div>
+<div class="card"><h2>Checklist nhập tay ({{ fmt }}) {% for f in b.formats %}{% if f != fmt %}· <a href="{{ url_for('book', idx=idx, fmt=f) }}">{{ f }}</a>{% endif %}{% endfor %}</h2>
+<pre style="background:#fafafa;color:#222;border:1px solid var(--line)">{{ checklist }}</pre></div>
+{% endblock %}

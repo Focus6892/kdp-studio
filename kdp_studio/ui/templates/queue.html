@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block title %}Hàng đợi · kdp-studio{% endblock %}
+{% block body %}
+<h1>Hàng đợi đăng sách</h1>
+<div class="grid">
+<div class="card"><h2>Chọn sách để đưa vào hàng đợi</h2>
+<form method="post" action="{{ url_for('queue_add') }}">
+<table><tr><th></th><th>Sách</th><th>Build</th><th>Định dạng có</th></tr>
+{% for b in books if not b.error %}
+<tr><td><input type="checkbox" name="books" value="{{ b.path }}" {% if not b.interior %}title="chưa build"{% endif %}></td>
+<td><b>{{ b.title }}</b><div class="muted">{{ b.id }}</div></td>
+<td>{% if b.interior and b.cover %}<span class="ok">sẵn sàng</span>{% else %}<span class="warn">chưa build</span>{% endif %}</td>
+<td>{% for f in b.formats %}<span class="pill">{{ f }}</span>{% endfor %}</td></tr>
+{% endfor %}
+</table>
+<p><label>Định dạng <select name="fmt">{% for f in formats %}<option value="{{ f }}">{{ f }}</option>{% endfor %}</select></label>
+<label>Ưu tiên (1 = trước) <input type="number" name="priority" value="5" min="1" max="99" style="width:60px"></label>
+<button>Thêm vào hàng đợi</button></p>
+</form>
+<p class="muted">Chỉ sách có định dạng đó trong book.yaml mới được thêm. Tool kiểm tra build, preflight và quota tuần trước khi mở trình duyệt.</p>
+</div>
+<div class="card"><h2>Đang chờ ({{ items|length }})</h2>
+{% if items %}<table><tr><th>#</th><th>Sách</th><th>Định dạng</th><th>Ưu tiên</th><th>Trạng thái</th><th></th></tr>
+{% for it in items %}<tr><td>{{ it.id }}</td><td>{{ it.book_id or it.book_path }}</td><td>{{ it.fmt }}</td><td>{{ it.priority }}</td><td>{{ it.status }}</td>
+<td><form class="inline" method="post" action="{{ url_for('queue_remove', item_id=it.id) }}"><button class="small secondary">Bỏ</button></form></td></tr>{% endfor %}</table>
+<form method="post" action="{{ url_for('queue_run_next') }}" style="margin-top:10px"><button>Chạy tựa kế tiếp còn quota</button></form>
+{% else %}<p class="muted">Hàng đợi trống.</p>{% endif %}
+<p class="muted"><a href="{{ url_for('queue', all=1) }}">Xem cả mục đã chạy</a></p>
+<table style="margin-top:10px"><tr><th>Định dạng</th><th>Còn tạo</th><th>Còn nộp</th></tr>{% for f, q in quota.items() %}<tr><td>{{ f }}</td><td>{{ q.remaining_created }}</td><td>{{ q.remaining_submitted }}</td></tr>{% endfor %}</table>
+</div>
+</div>
+{% endblock %}

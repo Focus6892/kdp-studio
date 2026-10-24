@@ -90,11 +90,17 @@ class PrintSpec(BaseModel):
 
 
 class ImageSource(BaseModel):
-    provider: Literal["placeholder", "folder", "spec", "openai", "google", "stability", "pollinations", "cloudflare"] = "placeholder"
+    provider: Literal["placeholder", "folder", "spec", "local", "openai", "google", "stability", "pollinations", "cloudflare"] = "placeholder"
     path: str | None = None
-    model: str | None = None
+    model: str | None = None  # API model name, or for 'local' a Hugging Face repo id / .safetensors path (SD 1.5 family)
     size: str = "1024x1536"
     seed: int = 7
+    # 'local' (diffusers on your GPU) only
+    lora: str | None = None  # Hugging Face repo id (or repo:file.safetensors / local path) of a coloring-book LoRA
+    lora_scale: float = Field(0.8, ge=0.0, le=2.0)
+    steps: int = Field(28, ge=4, le=80)
+    guidance: float = Field(7.0, ge=0.0, le=20.0)
+    local_size: str = "512x768"  # generation size on the GPU; the page is upscaled and re-thresholded afterwards
 
     @model_validator(mode="after")
     def _folder_needs_path(self) -> "ImageSource":

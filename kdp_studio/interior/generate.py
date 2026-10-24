@@ -209,7 +209,7 @@ class FolderProvider:
 log = logging.getLogger(__name__)
 
 # rough list prices per image in USD (2026-10), only for the running estimate printed by image-test / build
-APPROX_COST_USD = {"spec": 0.0, "openai": 0.07, "google": 0.04, "stability": 0.03, "pollinations": 0.0, "cloudflare": 0.0, "placeholder": 0.0, "folder": 0.0, "file": 0.0}
+APPROX_COST_USD = {"spec": 0.0, "local": 0.0, "openai": 0.07, "google": 0.04, "stability": 0.03, "pollinations": 0.0, "cloudflare": 0.0, "placeholder": 0.0, "folder": 0.0, "file": 0.0}
 API_PROVIDERS = ("openai", "google", "stability", "pollinations", "cloudflare")
 FREE_PROVIDERS = ("pollinations", "cloudflare")
 
@@ -431,6 +431,66 @@ class CloudflareProvider:
         return _write(out_path, data)
 
 
+class LocalDiffusersProvider:
+    """Stable Diffusion 1.5-family checkpoint (+ optional LoRA) on the local GPU through `diffusers`.
+    Free and unlimited; a 4 GB card runs fp16 at 512x768 with attention slicing in roughly 30-60 s per page.
+    Install with `kdp local-setup`; models download once into the Hugging Face cache."""
+
+    name = "local"
+    DEFAULT_MODEL = "Lykon/dreamshaper-8"
+
+    def __init__(self, model, size, negative_prompt=None, lora=None, lora_scale=0.8, steps=28, guidance=7.0, seed=7):
+        self.model = model or self.DEFAULT_MODEL
+        self.size = size
+        self.negative_prompt = negative_prompt
+        self.lora, self.lora_scale, self.steps, self.guidance, self.seed = lora, lora_scale, steps, guidance, seed
+        self._pipe = None
+
+    def _load(self):
+        if self._pipe is not None:
+            return self._pipe
+        try:
+            import torch
+            from diffusers import StableDiffusionPipeline
+        except ImportError as exc:  # pragma: no cover - depends on the machine
+            raise ProviderError("local provider needs torch + diffusers: run `kdp local-setup`") from exc
+        cuda = torch.cuda.is_available()
+        kw = {"torch_dtype": torch.float16 if cuda else torch.float32, "safety_checker": None, "requires_safety_checker": False}
+        src = Path(self.model)
+        pipe = StableDiffusionPipeline.from_single_file(str(src), **kw) if src.suffix == ".safetensors" and src.is_file() else StableDiffusionPipeline.from_pretrained(self.model, **kw)
+        if self.lora:
+            repo, _, fname = self.lora.partition(":")
+            lp = Path(self.lora)
+            if lp.is_file():
+                pipe.load_lora_weights(str(lp.parent), weight_name=lp.name)
+            elif fname:
+                pipe.load_lora_weights(repo, weight_name=fname)
+            else:
+                pipe.load_lora_weights(repo)
+            pipe.fuse_lora(lora_scale=self.lora_scale)
+        pipe = pipe.to("cuda" if cuda else "cpu")
+        if cuda:
+            pipe.enable_attention_slicing()
+            pipe.enable_vae_slicing()
+        else:
+            log.warning("no CUDA device: generating on the CPU (minutes per page)")
+        pipe.set_progress_bar_config(disable=True)
+        self._pipe = pipe
+        return pipe
+
+    def generate(self, prompt: str, index: int, attempt: int, out_path: Path, size: tuple[int, int]) -> Path:
+        import torch
+
+        pipe = self._load()
+        w, h = (int(x) for x in self.size.lower().split("x"))
+        w, h = max(256, w // 8 * 8), max(256, h // 8 * 8)
+        gen = torch.Generator(device=pipe.device.type).manual_seed(self.seed * 1000 + index * 10 + attempt)
+        image = pipe(prompt=prompt, negative_prompt=self.negative_prompt or None, width=w, height=h, num_inference_steps=self.steps, guidance_scale=self.guidance, generator=gen).images[0]
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        image.save(out_path, "PNG")
+        return out_path
+
+
 def make_provider(source: ImageSource | ArtSource, base_dir: Path, negative_prompt: str | None = None) -> ImageProvider:
     if source.provider == "placeholder":
         return PlaceholderProvider(seed=source.seed)
@@ -448,6 +508,8 @@ def make_provider(source: ImageSource | ArtSource, base_dir: Path, negative_prom
         return GoogleImagenProvider(model=source.model, size=source.size, negative_prompt=negative_prompt)
     if source.provider == "stability":
         return StabilityProvider(model=source.model, size=source.size, negative_prompt=negative_prompt)
+    if source.provider == "local":
+        return LocalDiffusersProvider(source.model, getattr(source, "local_size", "512x768"), negative_prompt, getattr(source, "lora", None), getattr(source, "lora_scale", 0.8), getattr(source, "steps", 28), getattr(source, "guidance", 7.0), source.seed)
     if source.provider == "pollinations":
         return PollinationsProvider(model=source.model, size=source.size, negative_prompt=negative_prompt)
     if source.provider == "cloudflare":

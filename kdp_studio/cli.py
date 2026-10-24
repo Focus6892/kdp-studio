@@ -143,6 +143,73 @@ def cmd_image_test(args) -> int:
     return 0
 
 
+def cmd_local_setup(args) -> int:
+    """Install the local image stack (CUDA PyTorch + diffusers) and pre-download the model and LoRA."""
+    import subprocess
+
+    if not args.skip_install:
+        for cmd in ([sys.executable, "-m", "pip", "install", "--user", "--index-url", f"https://download.pytorch.org/whl/{args.cuda}", "torch"],
+                    [sys.executable, "-m", "pip", "install", "--user", "diffusers", "transformers", "accelerate", "safetensors"]):
+            print("+", " ".join(cmd))
+            if subprocess.call(cmd) != 0:
+                print("install failed; see the pip output above")
+                return 1
+    try:
+        import torch
+    except ImportError:
+        print("torch is not importable after the install")
+        return 1
+    print(f"torch {torch.__version__}, CUDA available: {torch.cuda.is_available()}" + (f" ({torch.cuda.get_device_name(0)})" if torch.cuda.is_available() else ""))
+    from huggingface_hub import hf_hub_download, snapshot_download  # comes with diffusers
+
+    if args.model and not Path(args.model).exists():
+        print(f"downloading {args.model} ...")
+        snapshot_download(args.model, allow_patterns=["*.json", "*.txt", "*.safetensors"], ignore_patterns=["*.bin", "*.ckpt", "*.msgpack", "*.h5", "*.onnx"])
+    if args.lora and not Path(args.lora).exists():
+        repo, _, fname = args.lora.partition(":")
+        print(f"downloading LoRA {repo} ...")
+        hf_hub_download(repo, fname) if fname else snapshot_download(repo, allow_patterns=["*.safetensors", "*.json"])
+    print("Local stack ready. In book.yaml set interior.source.provider: local (plus model / lora), then: kdp image-test <book.yaml> --provider local")
+    return 0
+
+
+def cmd_license(args) -> int:
+    from . import license as lic
+
+    if args.license_cmd == "machine-id":
+        print(lic.machine_id())
+        return 0
+    if args.license_cmd == "keygen":
+        priv, pub = lic.keygen(Path(args.out))
+        print(f"private key: {priv}  (keep it outside the repo and back it up; anyone holding it can issue keys)")
+        print(f"public key embedded in: {pub}  (commit this file; builds containing it require a license)")
+        return 0
+    if args.license_cmd == "issue":
+        token = lic.issue(Path(args.key), args.to, args.machine, days=(None if args.days == 0 else args.days), features=args.feature or None)
+        print(token)
+        return 0
+    if args.license_cmd == "activate":
+        token = args.token if args.token != "-" else sys.stdin.read()
+        payload = lic.activate(token)
+        print(f"License active for {payload['licensee']} on {payload['machine']} until {payload.get('expires') or 'no expiry'}")
+        return 0
+    s = lic.status()
+    print(f"machine id : {s['machine']}")
+    print(f"enforced   : {s['enforced']}")
+    print(f"valid      : {s['valid']}" + (f"  ({s.get('licensee')}, expires {s.get('expires') or 'never'})" if s["valid"] else f"  - {s.get('reason')}"))
+    return 0 if s["valid"] or not s["enforced"] else 1
+
+
+def cmd_ui(args) -> int:
+    """Local web interface: books, builds, image tests, the publish queue, runs, quota, keys and license."""
+    try:
+        from .ui.app import serve
+    except ImportError as exc:
+        print(f"the web UI needs Flask: python -m pip install --user flask ({exc})")
+        return 1
+    return serve(host=args.host, port=args.port, book_dirs=[Path(d) for d in (args.books or [])], open_browser=not args.no_browser)
+
+
 def cmd_draw_preview(args) -> int:
     """Render every drawing spec in a folder to PNG (plus a contact sheet) so the designs can be reviewed."""
     from PIL import Image
@@ -848,10 +915,37 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("image-test", help="generate a few coloring pages with the real image provider and compare raw vs cleaned")
     p.add_argument("book")
     p.add_argument("--n", type=int, default=3, help="number of pages (default 3)")
-    p.add_argument("--provider", choices=["placeholder", "folder", "spec", "openai", "google", "stability", "pollinations", "cloudflare"], help="override interior.source.provider")
+    p.add_argument("--provider", choices=["placeholder", "folder", "spec", "local", "openai", "google", "stability", "pollinations", "cloudflare"], help="override interior.source.provider")
     p.add_argument("--model", help="override interior.source.model (e.g. gpt-image-1, imagen-4.0-generate-001, core)")
     p.add_argument("--out", help="output folder (default build/image-test)")
     p.set_defaults(func=cmd_image_test)
+    p = sub.add_parser("license", help="license keys: machine-id | activate | status (owner: keygen, issue)")
+    lsub = p.add_subparsers(dest="license_cmd", required=True)
+    lsub.add_parser("machine-id", help="print this computer's id (send it to the owner to get a key)")
+    lsub.add_parser("status", help="is a valid license active here?")
+    q = lsub.add_parser("activate", help="store a license key after verifying it")
+    q.add_argument("token", help="the key, or - to read it from stdin")
+    q = lsub.add_parser("keygen", help="owner: create the signing key pair and embed the public key in the package")
+    q.add_argument("--out", required=True, help="folder for license_private.pem (outside the repo)")
+    q = lsub.add_parser("issue", help="owner: sign a key for one machine")
+    q.add_argument("--key", required=True, help="path to license_private.pem")
+    q.add_argument("--to", required=True, help="licensee name")
+    q.add_argument("--machine", required=True, help="the licensee's machine id, or * for any machine")
+    q.add_argument("--days", type=int, default=365, help="validity in days (0 = no expiry)")
+    q.add_argument("--feature", action="append", help="feature tags (default: all)")
+    p.set_defaults(func=cmd_license)
+    p = sub.add_parser("ui", help="open the local web interface (books, build, image-test, publish queue, runs, quota, license)")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--books", action="append", help="folder holding <book>/book.yaml projects (repeatable; default: examples/ and books/ in the project)")
+    p.add_argument("--no-browser", action="store_true")
+    p.set_defaults(func=cmd_ui)
+    p = sub.add_parser("local-setup", help="install CUDA PyTorch + diffusers for the free local image provider and pre-download a model / LoRA")
+    p.add_argument("--cuda", default="cu126", help="PyTorch wheel index matching your driver (cu126 for CUDA 12.6; cpu without a GPU)")
+    p.add_argument("--model", default="Lykon/dreamshaper-8", help="Hugging Face repo id of an SD 1.5-family checkpoint to pre-download ('' to skip)")
+    p.add_argument("--lora", help="Hugging Face repo id (or repo:file.safetensors) of a coloring-book LoRA to pre-download")
+    p.add_argument("--skip-install", action="store_true", help="only download the models")
+    p.set_defaults(func=cmd_local_setup)
     p = sub.add_parser("draw-preview", help="render vector drawing specs (JSON) to PNG line art for review")
     p.add_argument("folder")
     p.add_argument("--size", default="1000x1500", help="pixel size, e.g. 2550x3300 for 8.5x11 at 300 DPI (default 1000x1500)")
@@ -1109,6 +1203,14 @@ def main(argv: list[str] | None = None) -> int:
     from .env import load_dotenv
 
     load_dotenv()  # API keys from the project's .env (gitignored); shell variables win
+    if getattr(args, "cmd", None) != "license":
+        from .license import LicenseError, require_license
+
+        try:
+            require_license()  # only bites in builds that embed a public key (kdp license keygen)
+        except LicenseError as exc:
+            print(f"license: {exc}", file=sys.stderr)
+            return 3
     for stream in (sys.stdout, sys.stderr):  # Windows consoles default to cp1252
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")

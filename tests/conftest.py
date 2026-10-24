@@ -1,6 +1,4 @@
-import sys
-from pathlib import Path
+import os
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# The owner's machines skip the license gate; tests must not depend on a key being activated.
+os.environ.setdefault("KDP_STUDIO_DEV", "1")
