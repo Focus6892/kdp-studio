@@ -22,7 +22,7 @@ window.CKEDITOR = { instances: { 'data[print_book][description]': {
 </script></head>
 <body>
 <h1>Paperback Details (mock)</h1>
-<label>Language <select id="data-print-book-language-native" name="data[print_book][language]"><option value="">Choose</option><option value="en">English</option><option value="es">Spanish</option></select></label><br>
+<label>Language <select id="data-print-book-language-native" name="data[print_book][language]" style="position:absolute;opacity:0;width:0;height:0;overflow:hidden"><option value="">Choose</option><option value="en">English</option><option value="es">Spanish</option></select></label><br>
 <label>Book Title <input id="data-print-book-title" name="data[print_book][title]" type="text"></label><br>
 <label>Subtitle <input id="data-print-book-subtitle" name="data[print_book][subtitle]" type="text"></label><br>
 <label>Edition <input id="data-print-book-edition-number" name="data[print_book][edition_number]" type="text"></label><br>
@@ -59,6 +59,7 @@ window.CKEDITOR = { instances: { 'data[print_book][description]': {
 // KDP shows this dialog instead of moving on when the weekly creation limit (drafts included) is used up
 function saveContinue() {
   if (new URLSearchParams(location.search).get('limit')) { document.getElementById('limit-modal').style.display = 'block'; return; }
+  if (new URLSearchParams(location.search).get('stay')) { return; }
   location.href = 'content.html?' + collect('d.');
 }
 </script>

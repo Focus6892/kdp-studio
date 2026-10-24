@@ -118,3 +118,14 @@ python -m kdp_studio publish run examples/lantern-lane/book.yaml --format paperb
 
 Tool nhận ra đang ở tab Details, ghi đè toàn bộ field bằng dữ liệu trong `book.yaml` (tiêu đề, tác giả, mô tả, từ khoá, bỏ tick Low-content...),
 rồi đi tiếp Content và Rights & Pricing như bình thường. Không ghi sự kiện `created`; khi bạn gõ `d` tool ghi `draft_saved`.
+
+## Khi KDP không chuyển tab sau "Save and Continue"
+
+Nút có thể bị mờ (ô AI tool chưa điền, chưa tick xác nhận, file còn "Processing") hoặc KDP hiện thông báo lỗi. Tool chờ 60 giây rồi hỏi
+"The <tab> tab is not on screen yet..." tối đa 3 lần: bạn sửa, tự bấm Save and Continue, đợi tab hiện rồi nhấn Enter. Tool chỉ điền và
+chụp ảnh khi tab thật sự đang hiển thị; nếu không bao giờ hiện, các field của tab đó được liệt kê để bạn nhập tay và lần chạy vẫn kết thúc
+bình thường bằng `d` hoặc `p`.
+
+Kết quả lần chạy thật đầu tiên (Lantern Lane, 2026-10-23/24, bản nháp JNZ7EMV4MER): tool điền 23 field, 4 field nhập tay
+(language mặc định, giấy cream vì thẻ radio dạng card, territories và giá vì tab Pricing không tự hiện). Đã vá cả ba nguyên nhân.
+

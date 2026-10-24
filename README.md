@@ -214,7 +214,7 @@ KDP gỡ sách có nội dung "excessively reused, recycled, or repeated within 
 - Chuyển RGB → CMYK bằng Pillow (không ICC profile); màu in có thể lệch nhẹ so với màn hình.
 - Upscale bằng LANCZOS + re-threshold; chưa tích hợp Real-ESRGAN.
 - Ước lượng DPI trong preflight giả định ảnh trải hết chiều rộng trang.
-- `kdp publish run`: selector đã đối chiếu với KDP thật (paperback, 2026-10-23) nhưng luồng điền trọn vẹn mới chạy trên mock; eBook chưa probe. Tool chủ ý không tự bấm Publish và không có chế độ chạy không người.
+- `kdp publish run`: đã chạy trọn vẹn một lần trên tài khoản thật (paperback, 2026-10-23/24, kết thúc Save as Draft): tool điền Details và Content, gán ISBN miễn phí, upload hai file; tab Rights & Pricing lần đó người dùng điền tay vì KDP không chuyển tab ngay (giờ tool chờ bạn xác nhận tab đã hiện rồi mới điền), nên phần điền giá chưa được kiểm chứng trực tiếp; eBook chưa probe. Tool chủ ý không tự bấm Publish và không có chế độ chạy không người.
 - `monitor ads`/`monitor sales` đọc file export bạn tải về; không có API cho Ads/Reports của KDP.
 - Nguồn `apify` và `creators` được viết theo tài liệu công khai nhưng chưa chạy với credential thật trong repo này; nguồn `csv` và `fixture` đã test. Chưa có Keepa và Google Trends.
 - Danh sách categories là gợi ý thường gặp; luôn xác nhận lại trong màn hình chọn category của KDP.

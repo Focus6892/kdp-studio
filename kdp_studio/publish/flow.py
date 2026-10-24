@@ -70,11 +70,18 @@ class FlowResult:
 
 
 class Flow:
-    def __init__(self, book: Book, fmt: str, session: BrowserSession, selectors: dict, approver: Approver, store: PublishStore | None, book_path: str | None = None, resume: bool = False):
+    def __init__(self, book: Book, fmt: str, session: BrowserSession, selectors: dict, approver: Approver, store: PublishStore | None, book_path: str | None = None, resume: bool = False, tab_timeout_s: float = 60.0):
         self.book, self.fmt, self.s, self.sel, self.approver, self.store = book, fmt, session, selectors, approver, store
         self.book_path = book_path
         self.resume = resume  # continuing an existing KDP draft: no title is created, so no 'created' event
+        self.tab_timeout_s = tab_timeout_s  # how long to wait for KDP to show the next tab before asking the human
         self.res = FlowResult()
+
+    # fields a tab owns, listed for hand entry when that tab never came on screen
+    TAB_FIELDS = {
+        "content": ["isbn", "ink_paper", "trim", "bleed", "cover_finish", "manuscript_upload", "cover_upload", "ai_content"],
+        "pricing": ["territories", "primary_marketplace", "list_price_us", "expanded_distribution"],
+    }
 
     # ---------------------------------------------------------------- helpers
     def _c(self, group: str, field: str, **kw) -> list[str]:
@@ -117,6 +124,23 @@ class Flow:
             if time.time() >= deadline:
                 return False
             time.sleep(0.5)
+
+    def _reach(self, group: str, label: str) -> bool:
+        """Wait for a tab's markers. When KDP stays put (disabled button, validation message), ask the human up
+        to three times to get the tab on screen; a tab that is not showing is never filled or screenshotted."""
+        timeout = self.tab_timeout_s
+        for _ in range(3):
+            if self._await(self._c(group, "page_markers"), timeout_s=timeout):
+                return True
+            self._gate(f"The {label} tab is not on screen yet. Click 'Save and Continue' yourself (fix whatever KDP flags), wait for {label} to appear, then press Enter (q = stop):")
+            timeout = min(timeout, 5)
+        self._skip_tab(group, label)
+        return False
+
+    def _skip_tab(self, group: str, label: str) -> None:
+        self.res.notes.append(f"{label} tab never appeared; its fields are left for you to enter by hand.")
+        for fld in self.TAB_FIELDS[group]:
+            self._record(False, fld, "enter by hand (tab not reached)")
 
     def _kdp_limit(self) -> None:
         msg = ("KDP refused to create the title: weekly title creation limit reached for this format "
@@ -371,25 +395,26 @@ class Flow:
             self._gate(self._summary("Details") + "\nReview the Details tab in the browser. [Enter] = click 'Save and Continue', q = stop:")
             if not self.s.click(self._c("details", "save_continue")):
                 self._gate("Click 'Save and Continue' yourself, then press Enter:")
-            if not self._await(self._c("content", "page_markers"), timeout_s=60):
-                self._gate("The Content tab did not appear. Open it yourself, then press Enter:")
-                self._await(self._c("content", "page_markers"), timeout_s=2)  # a late limit dialog still stops the run
+            content_ok = self._reach("content", "Content")  # also stops on KDP's weekly-limit dialog
             if self.resume:
                 self.res.notes.append("Resumed an existing KDP draft: no title creation counted toward the weekly limit.")
-            else:
+            elif content_ok:
                 self._event("created", "details saved")
-            if self.store is not None:
+            if content_ok and self.store is not None:
                 self.store.upsert_title(self.book.id, self.fmt, "draft", title=self.book.metadata.full_title)
-            self.fill_content()
-            self._shot("content")
-            self._gate(self._summary("Content") + "\nWait for KDP to finish processing both uploads; fill anything listed above by hand; tick 'I confirm that my answers are accurate' in the AI block; open 'Launch Previewer' and approve it. Then [Enter] = click 'Save and Continue', q = stop:")
-            if not self.s.click(self._c("content", "save_continue")):
-                self._gate("Click 'Save and Continue' yourself, then press Enter:")
+            if content_ok:
+                self.fill_content()
+                self._shot("content")
+                self._gate(self._summary("Content") + "\nWait for KDP to finish processing both uploads; fill anything listed above by hand; tick 'I confirm that my answers are accurate' in the AI block; open 'Launch Previewer' and approve it. Then [Enter] = click 'Save and Continue', q = stop:")
+                if not self.s.click(self._c("content", "save_continue")):
+                    self._gate("Click 'Save and Continue' yourself, then press Enter:")
 
-            if not self.s.wait_for(self._c("pricing", "page_markers"), timeout_s=60):
-                self._gate("The Pricing tab did not appear. Open it yourself, then press Enter:")
-            self.fill_pricing()
-            self._shot("pricing")
+            pricing_ok = content_ok and self._reach("pricing", "Rights & Pricing")
+            if not content_ok:
+                self._skip_tab("pricing", "Rights & Pricing")
+            if pricing_ok:
+                self.fill_pricing()
+                self._shot("pricing")
             for _ in range(3):
                 ans = self._gate(
                     self._summary("Pricing")
@@ -435,5 +460,5 @@ class Flow:
         return "\n".join(lines)
 
 
-def run_flow(book: Book, fmt: str, session: BrowserSession, selectors: dict, approver: Approver, store: PublishStore | None = None, start_url: str | None = None, book_path: str | None = None, resume: bool = False) -> FlowResult:
-    return Flow(book, fmt, session, selectors, approver, store, book_path, resume=resume).run(start_url)
+def run_flow(book: Book, fmt: str, session: BrowserSession, selectors: dict, approver: Approver, store: PublishStore | None = None, start_url: str | None = None, book_path: str | None = None, resume: bool = False, tab_timeout_s: float = 60.0) -> FlowResult:
+    return Flow(book, fmt, session, selectors, approver, store, book_path, resume=resume, tab_timeout_s=tab_timeout_s).run(start_url)

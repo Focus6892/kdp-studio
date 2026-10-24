@@ -472,30 +472,44 @@ class BrowserSession:
         loc = self.find(candidates)
         if loc is None:
             return False
-        try:
-            if value is not None:
+
+        def choose(val: str) -> bool:
+            """select_option needs a visible <select>; KDP hides the native one behind a styled dropdown,
+            so fall back to setting the value and firing change/input, which the page's own script listens to."""
+            try:
+                loc.select_option(value=val)
+                return True
+            except Exception:  # noqa: BLE001 - hidden select or value not present
                 try:
-                    loc.select_option(value=value)
-                    return True
-                except Exception:  # noqa: BLE001 - value not present, fall through to labels
-                    pass
+                    return bool(loc.evaluate(
+                        """(el, v) => { if (![...el.options].some(o => o.value === v)) return false;
+                                         el.value = v; el.dispatchEvent(new Event('input', {bubbles: true}));
+                                         el.dispatchEvent(new Event('change', {bubbles: true})); return true; }""",
+                        val,
+                    ))
+                except Exception:  # noqa: BLE001
+                    return False
+
+        try:
+            if value is not None and choose(value):
+                return True
             options = loc.evaluate("el => Array.from(el.options).map(o => [o.value, o.textContent.trim()])")
             if label_equals is not None:
                 for val, text in options:
                     if text.lower() == label_equals.lower():
-                        loc.select_option(value=val)
-                        return True
+                        if choose(val):
+                            return True
             needles = [label_contains] if isinstance(label_contains, str) else list(label_contains or [])
             for needle in needles:
                 for val, text in options:
                     if needle.lower() in text.lower():
-                        loc.select_option(value=val)
-                        return True
+                        if choose(val):
+                            return True
             if exclude_contains is not None:
                 for val, text in options:
                     if text and exclude_contains.lower() not in text.lower() and val != "":
-                        loc.select_option(value=val)
-                        return True
+                        if choose(val):
+                            return True
             return False
         except Exception as exc:  # noqa: BLE001
             log.info("select failed: %s", str(exc).splitlines()[0][:120])

@@ -165,3 +165,24 @@ def test_resume_counts_no_creation(tmp_path):
     assert any("Resumed an existing KDP draft" in n for n in result.notes)
     store.close()
 
+
+def test_flow_never_fills_a_tab_that_did_not_appear(tmp_path):
+    """KDP sometimes stays on the Content tab after 'Save and Continue' (disabled button, validation message).
+    The flow must then ask the human, and never fill or screenshot the Pricing fields on the wrong page."""
+    book = load_book(EXAMPLE_DIR / "book.yaml")
+    start = (MOCK / "details.html").as_uri() + "?stay=1"
+    session = _session(tmp_path, start)
+    store = PublishStore(tmp_path / "publish.sqlite")
+    approver = ScriptedApprover(["", "", "", "", "d"])  # details OK, three 'tab not on screen' prompts, saved as draft by hand
+    try:
+        result = run_flow(book, "paperback", session, load_selectors(None), approver, store, start_url=start, tab_timeout_s=1)
+    finally:
+        session.close()
+    assert result.status == "draft" and "created" not in result.events  # nothing was created on KDP
+    assert sum("not on screen yet" in p for p in approver.prompts) == 3
+    unfilled = dict(result.unfilled)
+    assert "ink_paper" in unfilled and "list_price_us" in unfilled and "territories" in unfilled
+    assert any("Content tab never appeared" in n for n in result.notes)
+    assert [Path(s).name for s in result.screenshots] == ["01-details.png"]
+    store.close()
+
