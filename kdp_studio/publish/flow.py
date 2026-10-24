@@ -516,11 +516,11 @@ class Flow:
                 self._shot("pricing")
             if not pricing_ok:
                 self._dump("final-page")  # whatever is on screen when the human takes over
-            for _ in range(3):
+            for _ in range(8):
                 ans = self._gate(
                     self._summary("Pricing")
                     + "\nThis tool never clicks Publish. Review everything; if it is right, click 'Publish' yourself in the browser.\n"
-                    "Then type: p = I clicked Publish, d = I saved it as a draft, q = stop:"
+                    "Then type: p = I clicked Publish, s = save as draft for me, d = I saved it as a draft myself, f = fill the Pricing tab again, q = stop:"
                 )
                 if ans in ("p", "published", "publish"):
                     self._event("submitted", "human clicked Publish")
@@ -528,6 +528,19 @@ class Flow:
                         self.store.upsert_title(self.book.id, self.fmt, "in_review", title=self.book.metadata.full_title)
                     res.status = "submitted"
                     break
+                if ans in ("s", "save"):  # saving a draft is reversible, so the tool may do it; publishing stays with the human
+                    if self.s.click(self._c("pricing", "save_draft")):
+                        self._pause(2000)
+                        self._shot("saved-draft")
+                        self._event("draft_saved", "tool clicked Save as Draft")
+                        res.status = "draft"
+                        break
+                    self.res.notes.append("'Save as Draft' was not found on this page; click it yourself and type d.")
+                    continue
+                if ans in ("f", "fill"):
+                    self.fill_pricing()
+                    self._shot("pricing-refill")
+                    continue
                 if ans in ("d", "draft"):
                     self._event("draft_saved", "human saved as draft")
                     res.status = "draft"

@@ -44,14 +44,15 @@ def test_assisted_flow_against_mock(tmp_path):
     start = (MOCK / "bookshelf.html").as_uri()
     session = _session(tmp_path, start)
     store = PublishStore(tmp_path / "publish.sqlite")
-    approver = ScriptedApprover(["", "", "d"])  # details OK, content OK, saved as draft (never 'p')
+    approver = ScriptedApprover(["", "", "s"])  # details OK, content OK, the tool saves the draft itself (never 'p')
     try:
         result = run_flow(book, "paperback", session, load_selectors(None), approver, store, start_url=start, book_path=str(work / "book.yaml"), dump_dir=tmp_path / "dom")
         page = session.page
         assert "pricing.html" in page.url
         params = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(page.url).query))
-        # the tool never publishes
+        # the tool never publishes, but it may save the draft when asked with 's'
         assert page.evaluate("window.__published") is False
+        assert page.evaluate("window.__draftSaved") is True
         assert page.input_value("#price-input-usd") == "9.99"
         assert page.is_checked("#worldwide-rights")
         assert page.input_value("#primary-marketplace-value") == "Amazon.com"  # chosen through the ARIA combobox
@@ -96,7 +97,7 @@ def test_assisted_flow_against_mock(tmp_path):
     assert params["c.manuscript-name"] == "interior.pdf" and params["c.cover-name"] == "cover_wrap.pdf"  # via the file chooser
     # gates were asked in order and screenshots taken
     assert len(approver.prompts) == 3 and "never clicks Publish" in approver.prompts[-1]
-    assert len(result.screenshots) == 3
+    assert len(result.screenshots) == 4  # details, content, pricing, saved-draft
     assert {p.name for p in (tmp_path / "dom").iterdir()} == {"dom-create.json", "dom-create.md", "dom-details.json", "dom-details.md", "dom-categories.json", "dom-categories.md", "dom-content.json", "dom-content.md", "dom-pricing.json", "dom-pricing.md"}
     assert "data-print-book-title" in (tmp_path / "dom" / "dom-details.md").read_text(encoding="utf-8")
     title_row = store.get_title(book.id, "paperback")
