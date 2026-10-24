@@ -4,7 +4,7 @@
 {% if error %}<div class="card"><span class="bad">{{ error }}</span></div>{% endif %}
 <div class="grid">
 <div class="card" style="grid-column:1/-1">
-<form method="post" action="{{ url_for('create_book') }}">
+<form method="post" action="{{ url_for('create_book') }}" id="create-form">
 <div class="grid">
 <div>
 <p><label>Thư mục (không dấu, không cách) <input type="text" name="folder" required placeholder="ocean-animals" style="width:95%"></label></p>
@@ -24,9 +24,31 @@
 <p><label>Chủ đề từng trang (mỗi dòng một trang; để trống thì tool tự biến tấu từ theme)<br><textarea name="subjects" rows="8" style="width:95%" placeholder="a smiling whale spouting water&#10;a sea turtle swimming over coral&#10;an octopus holding three shells"></textarea></label></p>
 </div>
 </div>
+<p style="border-top:1px solid var(--line);padding-top:10px;margin-top:4px">
+<button type="button" class="secondary" id="suggest-btn" onclick="suggestAll()">Gợi ý điền tất cả</button>
+<label class="muted" style="margin-left:8px"><input type="checkbox" id="overwrite"> ghi đè cả ô đã điền</label>
+<span id="suggest-note" class="muted" style="margin-left:8px">Gõ vài ô (chỉ thư mục hoặc chủ đề cũng đủ) rồi bấm: tool hoàn thiện tiêu đề, phụ đề, bút danh, từ khoá và đủ số chủ đề từng trang cho khớp nhau. Nguồn theo thứ tự: Claude (key Anthropic) → Cloudflare Workers AI → mẫu có sẵn, không cần key.</span></p>
 <p><button>Tạo book.yaml và mở trang sách</button> <span class="muted">Sau đó bấm Build để sinh ruột, bìa và preflight; tiến trình hiện theo từng trang.</span></p>
 </form>
+<script>
+async function suggestAll(){
+  const form = document.getElementById('create-form'), note = document.getElementById('suggest-note'), btn = document.getElementById('suggest-btn');
+  btn.disabled = true; note.textContent = 'đang gợi ý… (Claude/Cloudflare mất 10–40 giây, mẫu có sẵn thì tức thì)'; note.className = 'muted';
+  const payload = {}; new FormData(form).forEach((v, k) => { payload[k] = v; }); payload.overwrite = document.getElementById('overwrite').checked;
+  try {
+    const r = await fetch('{{ url_for("create_suggest") }}', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+    const d = await r.json(); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    let changed = 0;
+    for (const [k, v] of Object.entries(d.fields)) { const el = form.elements[k]; if (el && el.value !== v) { el.value = v; el.classList.add('suggested'); changed++; } }
+    note.textContent = 'đã điền ' + changed + ' ô từ ' + d.source_label + (d.notes.length ? ' · ' + d.notes.join(' · ') : '') + ' · xem lại rồi bấm Tạo';
+    note.className = d.source === 'offline' ? 'warn' : 'ok';
+  } catch (e) { note.textContent = 'không gợi ý được: ' + e.message; note.className = 'bad'; }
+  btn.disabled = false;
+}
+document.addEventListener('input', e => { if (e.target.classList) e.target.classList.remove('suggested'); });
+</script>
+<style>.suggested{background:#fff6d6}</style>
 </div>
 </div>
-<div class="card"><h2>Demo</h2><p class="muted">Cuốn mẫu <b>bold-easy-flowers</b> trong danh sách Sách dùng đúng luồng này (30 chủ đề hoa, model cục bộ + LoRA). Mở trang sách của nó để xem ô "Tiến trình tạo ruột": số trang đã xong trên tổng số, số lần sinh lại, giây mỗi trang và ảnh thu nhỏ các trang mới nhất; cuối cùng là liên kết PDF ruột và bìa.</p></div>
+<div class="card"><h2>Demo</h2><p class="muted">Cuốn mẫu <b>bold-easy-flowers</b> trong danh sách Sách dùng đúng luồng này (30 chủ đề hoa). Thử nhanh: gõ mỗi ô Thư mục, ví dụ <code>ocean-animals</code>, bấm <b>Gợi ý điền tất cả</b> rồi <b>Tạo</b>. Mở trang sách của nó để xem ô "Tiến trình tạo ruột": số trang đã xong trên tổng số, số lần sinh lại, giây mỗi trang và ảnh thu nhỏ các trang mới nhất; cuối cùng là liên kết PDF ruột và bìa.</p></div>
 {% endblock %}

@@ -333,6 +333,18 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
                 return redirect(url_for("book", idx=i))
         return redirect(url_for("index"))
 
+    @app.post("/create/suggest")
+    def create_suggest():
+        """Complete the rest of the create form around what was typed (Claude -> Cloudflare Workers AI -> offline library)."""
+        from ..suggest import suggest
+
+        data = request.get_json(silent=True) or request.form.to_dict()
+        overwrite = str(data.get("overwrite", "")).lower() in ("1", "true", "on", "yes")
+        try:
+            return suggest(data, overwrite=overwrite)
+        except Exception as exc:  # noqa: BLE001
+            return {"error": str(exc)[:300]}, 500
+
     # ---------------------------------------------------------------- build progress (works for builds started anywhere)
     @app.get("/book/<int:idx>/progress")
     def progress(idx: int):

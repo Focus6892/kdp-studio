@@ -6,3 +6,5 @@ os.environ.setdefault("KDP_STUDIO_DEV", "1")
 os.environ.setdefault("KDP_STUDIO_FORCE_PROVIDER", "placeholder")
 # No CLIP download during tests.
 os.environ.setdefault("KDP_STUDIO_SKIP_CONTENT_QA", "1")
+# The create-form "Gợi ý" button never calls Claude or Cloudflare during tests (the real .env may hold keys).
+os.environ.setdefault("KDP_STUDIO_SUGGEST", "offline")

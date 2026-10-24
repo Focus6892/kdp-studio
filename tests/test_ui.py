@@ -63,3 +63,10 @@ def test_settings_create_and_progress(client, tmp_path):
     bad = client.post("/create", data={"folder": "Bad Name", "title": "T", "author": "A", "theme": "t"})
     assert bad.status_code == 200 and "chữ thường" in bad.get_data(as_text=True)
 
+
+def test_create_suggest_route(client):
+    r = client.post("/create/suggest", json={"folder": "ocenan", "images": 24, "overwrite": False})
+    assert r.status_code == 200
+    d = r.get_json()
+    assert d["source"] == "offline" and d["fields"]["folder"] == "ocenan" and d["fields"]["title"] == "Ocean Animals Coloring Book"
+    assert len(d["fields"]["subjects"].splitlines()) == 24 and len(d["fields"]["keywords"].split(", ")) == 7
