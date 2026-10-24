@@ -283,13 +283,28 @@ class Flow:
         if dlg is None:
             self.res.notes.append(note)
             return
+        existing = 0
+        try:
+            existing = sum(self.s._locator(dlg, c).count() for c in self._c("details", "categories_existing"))
+        except Exception:  # noqa: BLE001
+            pass
+        if existing:  # a resumed draft already carries categories: leave them for the human to review, never stack more
+            self.s.click_in(dlg, self._c("details", "categories_cancel"))
+            self.res.notes.append(f"Categories: the draft already has {existing} selected; review them in 'Edit categories' (book.yaml wants: {' | '.join(cats)}).")
+            for path in cats:
+                self._record(True, f"category:{path}", "already on the draft")
+            return
         picked: list[str] = []
         for path in cats:
             parts = [x.strip() for x in path.split(">") if x.strip()]
             if parts and self.s.pick_category(dlg, parts):
                 picked.append(path)
                 self._pause(400)
-        saved = bool(picked) and self.s.click_in(dlg, self._c("details", "categories_save"))
+        if picked:
+            saved = self.s.click_in(dlg, self._c("details", "categories_save"))
+        else:
+            saved = False
+            self.s.click_in(dlg, self._c("details", "categories_cancel"))  # never leave the modal in the way
         for path in cats:
             self._record(path in picked, f"category:{path}", "pick in the dialog")
         if picked and not saved:

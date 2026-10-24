@@ -182,7 +182,8 @@ class BrowserSession:
                      const o = opts.find(o => o.textContent.trim().toLowerCase() === w) || opts.find(o => o.textContent.trim().toLowerCase().includes(w));
                      if (!o) return false;
                      if (el.value === o.value) return true;  // already on this level: re-selecting would reset the ticks below
-                     el.value = o.value; el.dispatchEvent(new Event('input', {bubbles: true}));
+                     Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, o.value);  // React-safe
+                     el.dispatchEvent(new Event('input', {bubbles: true}));
                      el.dispatchEvent(new Event('change', {bubbles: true})); return true; }""",
                 label,
             ))
@@ -196,7 +197,10 @@ class BrowserSession:
             selects = dialog.locator("select")
             if selects.count() <= i or not self._option_by_text(selects.nth(i), part):
                 return False
-            self.page.wait_for_timeout(900)
+            for _ in range(12):  # the next level (or the placement list) is rendered on demand
+                self.page.wait_for_timeout(250)
+                if dialog.locator("select").count() > i + 1 or dialog.get_by_role("checkbox").count() > 0:
+                    break
         last = parts[-1]
         for attempt in (lambda: dialog.get_by_role("checkbox", name=last).first, lambda: dialog.locator("label", has_text=last).first):
             try:
