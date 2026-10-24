@@ -92,7 +92,7 @@ def cmd_image_test(args) -> int:
     if not isinstance(interior, ColoringInterior):
         print("image-test works on coloring books (interior.type: coloring)")
         return 2
-    overrides = {k: v for k, v in {"provider": args.provider, "model": args.model}.items() if v}
+    overrides = {k: v for k, v in {"provider": args.provider, "model": args.model, "lora": args.lora}.items() if v}
     source = interior.source.model_copy(update=overrides)
     out = Path(args.out) if args.out else book.build_dir / "image-test"
     out.mkdir(parents=True, exist_ok=True)
@@ -916,7 +916,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("book")
     p.add_argument("--n", type=int, default=3, help="number of pages (default 3)")
     p.add_argument("--provider", choices=["placeholder", "folder", "spec", "local", "openai", "google", "stability", "pollinations", "cloudflare"], help="override interior.source.provider")
-    p.add_argument("--model", help="override interior.source.model (e.g. gpt-image-1, imagen-4.0-generate-001, core)")
+    p.add_argument("--model", help="override interior.source.model (e.g. gpt-image-1, imagen-4.0-generate-001, core, @cf/lykon/dreamshaper-8-lcm, Lykon/dreamshaper-8)")
+    p.add_argument("--lora", help="local provider: LoRA repo id or repo:file.safetensors (add its trigger word to interior.style_prompt)")
     p.add_argument("--out", help="output folder (default build/image-test)")
     p.set_defaults(func=cmd_image_test)
     p = sub.add_parser("license", help="license keys: machine-id | activate | status (owner: keygen, issue)")

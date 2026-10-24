@@ -414,7 +414,11 @@ class CloudflareProvider:
     def body(self, prompt: str, size: tuple[int, int]) -> dict:
         if "flux" in self.model:
             return {"prompt": _with_negative(prompt, self.negative_prompt), "steps": 6}
-        b = {"prompt": prompt, "width": min(size[0], 2048), "height": min(size[1], 2048), "num_steps": 20}
+        # SDXL / DreamShaper-LCM (Beta): width/height 256-2048; LCM wants few steps and low guidance
+        lcm = "lcm" in self.model
+        b = {"prompt": prompt, "width": min(size[0], 2048), "height": min(size[1], 2048), "num_steps": 8 if lcm else 20}
+        if lcm:
+            b["guidance"] = 1.5
         if self.negative_prompt:
             b["negative_prompt"] = self.negative_prompt
         return b
