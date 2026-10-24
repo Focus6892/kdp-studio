@@ -461,6 +461,20 @@ class BrowserSession:
                     log.info("fill_nth failed: %s", str(exc).splitlines()[0][:120])
         return False
 
+    def is_checked(self, candidates: list[str]) -> bool | None:
+        """Checked state of a native or ARIA control; None when nothing matches or the state cannot be read."""
+        loc = self.find(candidates)
+        if loc is None:
+            return None
+        try:
+            return bool(loc.is_checked())
+        except Exception:  # noqa: BLE001 - not a checkbox/radio for Playwright: read aria-checked / aria-expanded
+            try:
+                v = loc.evaluate("el => el.getAttribute('aria-checked') ?? el.getAttribute('aria-expanded')")
+                return None if v is None else v == "true"
+            except Exception:  # noqa: BLE001
+                return None
+
     def press(self, candidates: list[str], key: str) -> bool:
         """Send a key to the first matching element (Tab commits a React input and fires its onBlur)."""
         loc = self.find(candidates)

@@ -200,7 +200,16 @@ class Flow:
             return False
         disclosure = self.book.ai_disclosure()
         used_ai = disclosure["Did you use AI tools in creating texts, images and/or translations?"] == "Yes"
-        self._record(self.s.check(self._c("ai", "ai_yes" if used_ai else "ai_no")), "ai_content", "yes" if used_ai else "no")
+        want = "ai_yes" if used_ai else "ai_no"
+        ok = self.s.check(self._c("ai", want))
+        if not ok:  # eBook Content: Amazon accordion rows - click the row header, then read the radio's aria-checked
+            if self.s.click(self._c("ai", want + "_row")):
+                self._pause(700)
+                state = self.s.is_checked(self._c("ai", want))
+                ok = state if state is not None else True
+        self._record(ok, "ai_content", "yes" if used_ai else "no")
+        if used_ai and ok:
+            self._pause(500)  # the questionnaire dropdowns render once 'Yes' is open
         if not used_ai:
             return True
         # KDP words the scope options differently per category ("Entire work" / "Many or all" / "Some sections" /

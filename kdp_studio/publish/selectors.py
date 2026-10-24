@@ -75,6 +75,9 @@ DEFAULT_SELECTORS: dict = {
                    "xpath=(//select[starts-with(@id,'generative-ai-questionnaire')]/ancestor::*[.//*[@role='radio']][1]//*[@role='radio'])[1]"],
         "ai_no": ["input[name='has-ai-content'][value='no']", "#data-{fmt}-ai-content-no", "input[name*='ai_content'][value='false']", "input[name*='ai-content'][value='false']",
                   "xpath=(//select[starts-with(@id,'generative-ai-questionnaire')]/ancestor::*[.//*[@role='radio']][1]//*[@role='radio'])[2]"],
+        # eBook: the Yes/No choices are Amazon accordion rows; click the row whose text is exactly Yes / No, then verify aria-checked
+        "ai_yes_row": [".a-accordion-row:has(:text-is('Yes'))", "[role='radio']:has(:text-is('Yes'))"],
+        "ai_no_row": [".a-accordion-row:has(:text-is('No'))", "[role='radio']:has(:text-is('No'))"],
         # the block exists on a page only when one of these is present (guards against look-alike Yes/No radios elsewhere)
         "block_markers": ["input[name='has-ai-content']", "#generative-ai-questionnaire-images", "#data-{fmt}-ai-content-yes", "select[name*='ai_content']"],
         # legacy <select> variants (older UI / eBook flow); the React comboboxes have no stable ids
