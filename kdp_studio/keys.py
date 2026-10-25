@@ -77,6 +77,26 @@ def _check_anthropic(v: dict) -> tuple[bool, str]:
     return (True, "key hợp lệ") if code == 200 else (False, f"HTTP {code}: {body[:160]}")
 
 
+def _check_compat(v: dict) -> tuple[bool, str]:
+    base = (v.get("OPENAI_COMPAT_BASE_URL") or "").rstrip("/")
+    if not base:
+        return False, "thiếu OPENAI_COMPAT_BASE_URL (ví dụ https://oxionai.com/v1)"
+    headers = {"Authorization": f"Bearer {v['OPENAI_COMPAT_API_KEY']}"} if v.get("OPENAI_COMPAT_API_KEY") else {}
+    code, body = _get(f"{base}/models", headers)
+    if code != 200:
+        return False, f"HTTP {code}: {body[:160]}"
+    try:
+        ids = [m.get("id", "") for m in (json.loads(body).get("data") or [])]
+    except (ValueError, AttributeError):
+        ids = []
+    model = v.get("OPENAI_COMPAT_MODEL") or ""
+    if not model:
+        return False, f"endpoint OK ({len(ids)} model) · thiếu OPENAI_COMPAT_MODEL, ví dụ {ids[0] if ids else 'gpt-4o-mini'}"
+    if ids and model not in ids:
+        return True, f"endpoint OK · không thấy model {model} trong /models ({len(ids)} model), vẫn có thể gọi thử"
+    return True, f"endpoint OK · model {model}" + (f" có trong danh sách ({len(ids)} model)" if ids else "")
+
+
 def _check_hf(v: dict) -> tuple[bool, str]:
     code, body = _get("https://huggingface.co/api/whoami-v2", {"Authorization": f"Bearer {v['HF_TOKEN']}"})
     return (True, f"token hợp lệ · user {json.loads(body).get('name', '?')}") if code == 200 else (False, f"HTTP {code}: {body[:120]}")
@@ -101,6 +121,11 @@ PROVIDERS: list[dict] = [
      "steps": ["Vào auth.pollinations.ai, đăng nhập bằng GitHub", "Tạo API key và dán vào ô bên dưới (có thể bỏ trống)"]},
     {"id": "anthropic", "name": "Anthropic Claude (gợi ý metadata, prompt đa dạng, draft truyện, QA ảnh)", "vars": ["ANTHROPIC_API_KEY"], "url": "https://console.anthropic.com/settings/keys", "free": "Trả theo token; không bắt buộc, tool có đường offline.", "check": _check_anthropic,
      "steps": ["Đăng nhập console.anthropic.com", "Settings → API Keys → Create Key", "Nạp credit trong Billing"]},
+    {"id": "compat", "name": "OpenAI-compatible API (Oxion AI, OpenRouter, Groq, Ollama...) cho gợi ý, viết truyện và vẽ vector", "vars": ["OPENAI_COMPAT_BASE_URL", "OPENAI_COMPAT_API_KEY", "OPENAI_COMPAT_MODEL"],
+     "public": ["OPENAI_COMPAT_BASE_URL", "OPENAI_COMPAT_MODEL"], "optional": True, "url": "https://oxionai.com/register",
+     "free": "Bất kỳ endpoint kiểu OpenAI: Oxion AI miễn phí 0,5 triệu token/tháng không cần thẻ (gói từ 3,50 USD/50 triệu token), OpenRouter có model miễn phí, Ollama chạy local không cần key. Base URL ví dụ https://oxionai.com/v1, model ví dụ claude-sonnet-5 hay deepseek-v4-flash-0731.",
+     "steps": ["Đăng ký tài khoản ở dịch vụ (Oxion: Start free, không cần thẻ) và tạo API key", "Dán base URL (kết thúc bằng /v1), key và tên model đúng như danh sách /models của dịch vụ", "Bấm Kiểm tra: tool gọi GET /models để xác nhận"],
+     "check": _check_compat},
     {"id": "huggingface", "name": "Hugging Face token (tải model nhanh hơn)", "vars": ["HF_TOKEN"], "optional": True, "url": "https://huggingface.co/settings/tokens", "free": "Miễn phí; chỉ cần cho model gated hoặc để tránh giới hạn tải.", "check": _check_hf,
      "steps": ["Đăng nhập huggingface.co", "Settings → Access Tokens → Create new token (Read)"]},
 ]
@@ -184,8 +209,9 @@ def profiles(provider_id: str) -> list[dict]:
         if n > 1 and not any(present.values()):
             continue
         complete = all(present.values()) or (bool(prov.get("optional")) and n == 1)
+        public = set(prov.get("public") or [])
         out.append({"id": profile_id(provider_id, n), "n": n, "vars": {v: var_name(v, n) for v in prov["vars"]}, "present": present,
-                    "masked": {v: mask(vals.get(var_name(v, n))) for v in prov["vars"]}, "complete": complete})
+                    "masked": {v: (vals.get(var_name(v, n)) or "") if v in public else mask(vals.get(var_name(v, n))) for v in prov["vars"]}, "complete": complete})
     return out
 
 
@@ -260,6 +286,6 @@ def check(provider_id: str, n: int = 1) -> dict:
 
 def status_table() -> list[dict]:
     vals = current_values()
-    return [{**{k: p[k] for k in ("id", "name", "vars", "url", "free", "steps")}, "optional": p.get("optional", False),
+    return [{**{k: p[k] for k in ("id", "name", "vars", "url", "free", "steps")}, "optional": p.get("optional", False), "public": p.get("public", []),
              "present": {v: bool(vals.get(v)) for v in p["vars"]}, "masked": {v: mask(vals.get(v)) for v in p["vars"]},
              "profiles": profiles(p["id"]), "next_n": next_profile_n(p["id"])} for p in PROVIDERS]

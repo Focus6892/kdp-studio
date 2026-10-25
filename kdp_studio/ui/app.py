@@ -283,7 +283,7 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
             s.close()
         art = artifacts_for(b, fmt)
         runs = sorted((p for p in runs_dir.glob(f"*-{b.id}-*") if p.is_dir()), reverse=True)[:5] if runs_dir.is_dir() else []
-        from .. import claude_cli
+        from .. import claude_cli, compat
         from ..llm import claude_available, cloudflare_available
 
         is_story = isinstance(b.interior, StoryInterior)
@@ -291,7 +291,7 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
         return render_template("book.html", idx=idx, e=entry, b=b, fmt=fmt, checklist=checklist, art={k: (str(v) if v else None) for k, v in art.items()}, title_rows=title_rows, runs=[r.name for r in runs],
                                providers=["auto", "placeholder", "spec", "local", "pollinations", "cloudflare", "openai", "google", "stability"], is_coloring=isinstance(b.interior, ColoringInterior),
                                is_story=is_story, story=story, brief_exists=(b.book_dir / "story_brief.yaml").is_file(), llm_ready=claude_available() or claude_cli.available() or cloudflare_available(),
-                               cli_ready=claude_cli.available(), api_ready=claude_available(), gemini_ready=bool(keymod.current_values().get("GEMINI_API_KEY")))
+                               cli_ready=claude_cli.available(), api_ready=claude_available(), gemini_ready=bool(keymod.current_values().get("GEMINI_API_KEY")), compat_ready=compat.available())
 
     @app.post("/book/<int:idx>/build")
     def build(idx: int):
@@ -513,7 +513,7 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
                 return i
         abort(500)
 
-    def start_draft(idx: int, polish: bool = False) -> str:
+    def start_draft(idx: int, polish: bool = False, engine: str | None = None) -> str:
         """`kdp story draft` for a story book as a background job: bible -> outline -> chapters into its manuscript folder."""
         entry, b = book_at(idx)
         if not isinstance(b.interior, StoryInterior):
@@ -522,6 +522,8 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
         if not brief.is_file():
             raise FileNotFoundError(f"không thấy {brief}: tạo file brief (xem examples/lantern-lane/story_brief.yaml) rồi thử lại")
         cmd = cli_command(["story", "draft", "--brief", str(brief), "--out", str(b.book_dir / b.interior.manuscript_dir)]) + (["--polish"] if polish else [])
+        if engine and engine != "auto":
+            cmd += ["--engine", engine]
         return jobs.start(f"viết nháp {entry['folder']}", cmd, book_idx=idx)
 
     @app.post("/create/story")
@@ -550,7 +552,7 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
     @app.post("/book/<int:idx>/draft")
     def draft(idx: int):
         try:
-            job_id = start_draft(idx, polish=bool(request.form.get("polish")))
+            job_id = start_draft(idx, polish=bool(request.form.get("polish")), engine=request.form.get("engine"))
         except FileNotFoundError as exc:
             return redirect(url_for("book", idx=idx, m=str(exc)))
         return redirect(url_for("job", job_id=job_id))

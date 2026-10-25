@@ -1,0 +1,127 @@
+# Flowers drawn through an OpenAI-compatible endpoint (kdp draw --engine compat, Oxion AI): drawings/*.json written by the model
+id: cb-flowers-compat-001
+type: coloring
+niche: bold and easy flowers
+formats:
+- paperback
+metadata:
+  title: Flowers Coloring Book
+  subtitle: 30 Bold and Easy Flower Designs for Adults and Kids
+  author: Ivy Lennox
+  language: English
+  description_html: <h4>30 bold and easy bold and easy flowers designs, one per page</h4><p>Flowers Coloring Book gives you
+    30 large, simple illustrations with thick clean outlines, printed single-sided on 8.5 x 11 inch pages so markers and gel
+    pens never bleed through onto the next picture. Made for adults and kids, beginners.</p><ul><li>Big shapes, no tiny details</li><li>Single-sided
+    pages with blank backs</li><li>Color test page included</li></ul><p>Relax, color, repeat.</p>
+  keywords:
+  - flower coloring book
+  - floral coloring pages
+  - easy coloring book for adults
+  - bold and easy coloring book
+  - large print coloring book
+  - relaxing coloring book
+  - coloring book for seniors
+  categories:
+  - Crafts, Hobbies & Home > Crafts & Hobbies > Coloring Books for Grown-Ups
+  - Arts & Photography > Drawing > Coloring Books
+  low_content: false
+  large_print: false
+print:
+  trim: 8.5x11
+  paper: white_bw
+  bleed: true
+  cover_finish: matte
+  isbn: kdp_free
+interior:
+  type: coloring
+  theme: bold and easy flowers
+  audience: adults and kids, beginners
+  images: 30
+  single_sided: true
+  back_page: blank
+  front_matter:
+  - title
+  - copyright
+  - belongs_to
+  - test_colors
+  back_matter:
+  - thank_you
+  - blank
+  style_prompt: ColoringBookAF, coloring book page, one single subject centered on a plain white background with generous
+    empty space around it, bold clean black outlines of even thickness, simple shapes, large areas to color, no shading, no
+    gray, no hatching, no background scenery, no text, no watermark no gray, pure white background, no text, no watermark,
+    centered composition
+  negative_prompt: color, shading, gradients, gray fill, text, letters, numbers, watermark, signature, blurry, photo, person,
+    woman, man, face, portrait, child, tiny details, cross-hatching
+  subjects:
+  - a single large daisy filling the page
+  - a tulip in a tall vase
+  - a rose with wide curled petals
+  - a sunflower with a big round center and wide petals
+  - five tulips tied together with a ribbon bow, stems crossed, floating on a plain white background
+  - a potted cactus with one bloom
+  - three poppies on long stems
+  - a lily with curling petals
+  - a lotus floating on a pond with lily pads
+  - a wreath of roses and leaves
+  - a hibiscus with a long stamen
+  - a basket of mixed wildflowers
+  - a lavender bunch tied with string
+  - a small watering can with three large daisies standing in it, nothing else around
+  - a single large peony flower head seen from above, big simple petals
+  - a pair of daffodils with leaves
+  - a hanging planter with trailing flowers
+  - a flower mandala with eight petals
+  - a cherry blossom branch
+  - a garden gate with climbing roses
+  - a magnolia bloom on a branch
+  - a morning glory vine on a trellis
+  - a hibiscus flower with one large open bloom
+  - a teacup planted with pansies
+  - a dandelion with floating seeds
+  - a bluebell cluster with a bee
+  - a window box of geraniums
+  - an orchid with three blooms
+  - a daisy chain border around a single bloom
+  - a tulip field under a round sun
+  source:
+    provider: spec
+    path: drawings
+    seed: 7
+    size: 1024x1536
+  cleanup:
+    threshold: 128
+    min_line_px: 3
+    despeckle: 1
+    art_margin_in: 0.5
+  dedupe:
+    enabled: true
+    max_distance: 10
+    library: library/image_hashes.json
+  qa:
+    heuristic: true
+    claude: false
+cover:
+  art:
+    provider: file
+    path: cover_art.png
+    sticker: true
+  layout: poster
+  theme: midnight
+  badge: 30 designs
+  back_blurb: 30 bold and easy flowers designs with thick, forgiving outlines and large shapes, each on its own page with
+    a blank back.
+  back_bullets:
+  - 30 single-sided pages
+  - Bold, easy lines
+  - Large 8.5 x 11 inch format
+  barcode_box: true
+pricing:
+  marketplace: amazon.com
+  list_price: 9.99
+provenance:
+  text: human
+  interior_images: ai_generated
+  cover_art: human
+  ai_tools:
+  - claude-sonnet-5 via Oxion AI (vector drawing specs rendered by kdp-studio)

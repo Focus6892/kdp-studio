@@ -39,11 +39,11 @@
 <div class="card"><h2>{{ icon('sparkles') }} Vẽ trang bằng Claude (vector, không cần API)</h2>
 <form method="post" action="{{ url_for('draw_pages', idx=idx) }}" class="row">
 <label>Trang <input type="text" name="pages" placeholder="tất cả, hoặc 1-5,8" style="width:130px"></label>
-<label>Engine <select name="engine"><option value="auto">auto (lệnh claude, rồi API)</option><option value="cli">Claude Code CLI</option><option value="api">Anthropic API</option><option value="gemini">Gemini API</option></select></label>
+<label>Engine <select name="engine"><option value="auto">auto (lệnh claude, rồi API)</option><option value="cli">Claude Code CLI</option><option value="api">Anthropic API</option><option value="gemini">Gemini API</option><option value="compat">OpenAI-compatible (Oxion, OpenRouter, Ollama)</option></select></label>
 <label>Model <select name="model"><option value="">mặc định</option><option value="sonnet">sonnet</option><option value="opus">opus</option><option value="haiku">haiku</option><option value="gemini-2.5-flash">gemini-2.5-flash</option><option value="gemini-2.5-pro">gemini-2.5-pro</option></select></label>
 <label style="font-weight:400"><input type="checkbox" name="set_provider" value="1" checked> chuyển nguồn ảnh sang spec</label>
 <label style="font-weight:400"><input type="checkbox" name="overwrite" value="1"> vẽ lại trang đã có</label>
-<button {% if not cli_ready and not api_ready and not gemini_ready %}disabled{% endif %}>{{ icon('sparkles') }} Vẽ</button>
+<button {% if not cli_ready and not api_ready and not gemini_ready and not compat_ready %}disabled{% endif %}>{{ icon('sparkles') }} Vẽ</button>
 </form>
 <p class="muted" style="margin-top:8px">Claude viết mỗi trang thành bản vẽ vector (JSON), tool render thành nét đều và sạch; log của job in số token và chi phí niêm yết từng trang.
 {% if cli_ready %}Lệnh <code>claude</code> có sẵn trên máy: dùng gói Claude đang đăng nhập, không cần key.{% else %}Chưa thấy lệnh <code>claude</code>: cài Claude Code và đăng nhập, hoặc thêm ANTHROPIC_API_KEY ở Cài đặt.{% endif %}{% if gemini_ready %} Engine Gemini dùng GEMINI_API_KEY đã có.{% endif %} Vẽ xong bấm Build.</p>
@@ -53,6 +53,7 @@
 <div class="card"><h2>{{ icon('edit') }} Bản thảo · {{ story.drafted }}/{{ story.total }} chương có nội dung · {{ '{:,}'.format(story.words) }} từ</h2>
 <form method="post" action="{{ url_for('draft', idx=idx) }}" class="row" style="margin-bottom:10px">
 <button {% if not brief_exists %}disabled{% endif %}>{{ icon('sparkles') }} Viết nháp các chương (AI)</button>
+<label>Engine <select name="engine"><option value="auto">auto</option><option value="claude">Anthropic API</option><option value="cli">Claude Code CLI</option><option value="compat">OpenAI-compatible</option><option value="cloudflare">Cloudflare</option></select></label>
 <label style="font-weight:400"><input type="checkbox" name="polish" value="1"> biên tập lại từng chương (<code>--polish</code>, chậm gấp đôi)</label>
 <span class="muted">bible → dàn ý → từng chương theo <code>story_brief.yaml</code>; các khung chương chưa viết được thay bằng chương mới, file bạn viết tay vẫn giữ (xoá tay nếu trùng số).{% if not llm_ready %} Cần key Anthropic hoặc Cloudflare (Cài đặt).{% endif %}{% if not brief_exists %} Chưa có <code>story_brief.yaml</code> trong thư mục sách.{% endif %}</span>
 </form>

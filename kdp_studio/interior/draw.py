@@ -183,6 +183,15 @@ def _call_gemini(system: str, user: str, model: str | None) -> tuple[dict, dict]
                  "output_tokens": tokens_out + thinking, "thinking_tokens": thinking, "cost_usd": round(cost, 5), "seconds": round(time.monotonic() - t0, 1)}
 
 
+def _call_compat(system: str, user: str, model: str | None) -> tuple[dict, dict]:
+    """Any OpenAI-compatible endpoint (Oxion AI, OpenRouter, Ollama ...) through kdp_studio.compat."""
+    from .. import compat
+
+    obj, res = compat.ask_json(system, user, model=model)
+    return obj, {"engine": "compat", "model": res.model, "input_tokens": res.input_tokens, "cached_tokens": 0, "output_tokens": res.output_tokens,
+                 "thinking_tokens": res.thinking_tokens, "cost_usd": res.cost_usd, "seconds": round(res.duration_ms / 1000, 1)}
+
+
 def pick_engine(engine: str = "auto") -> str:
     from .. import claude_cli, llm
 
@@ -201,6 +210,11 @@ def pick_engine(engine: str = "auto") -> str:
 
         if not (keymod.current_values().get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")):
             raise RuntimeError("chưa có GEMINI_API_KEY (Cài đặt -> Google Gemini API)")
+    if engine == "compat":
+        from .. import compat
+
+        if not compat.available():
+            raise RuntimeError("chưa đặt OPENAI_COMPAT_BASE_URL và OPENAI_COMPAT_MODEL (Cài đặt -> OpenAI-compatible API)")
     return engine
 
 
@@ -223,7 +237,7 @@ def draw_specs(book: Book, out_dir: Path, pages: list[int] | None = None, engine
     subjects = page_subjects(book)
     pages = pages if pages is not None else list(range(len(subjects)))
     out_dir.mkdir(parents=True, exist_ok=True)
-    call = {"cli": _call_cli, "api": _call_api, "gemini": _call_gemini}[engine]
+    call = {"cli": _call_cli, "api": _call_api, "gemini": _call_gemini, "compat": _call_compat}[engine]
     style = re.sub(r"\bColoringBookAF,?\s*", "", interior.style_prompt or "bold clean outlines, simple shapes, large areas to colour").strip()
     records: list[dict] = []
     totals = {"pages": 0, "ok": 0, "input_tokens": 0, "output_tokens": 0, "thinking_tokens": 0, "cost_usd": 0.0, "seconds": 0.0}
@@ -281,7 +295,16 @@ def draw_specs(book: Book, out_dir: Path, pages: list[int] | None = None, engine
 SPEC_TOOL = "Claude (vector drawing specs rendered by kdp-studio)"
 
 
-def set_spec_provider(book_path: Path, folder: str = "drawings") -> list[str]:
+def tool_name(engine: str, model: str | None = None) -> str:
+    """What to declare to KDP for specs drawn by this engine."""
+    if engine in ("cli", "api"):
+        return SPEC_TOOL
+    if engine == "gemini":
+        return "Gemini (vector drawing specs rendered by kdp-studio)"
+    return f"{model or 'OpenAI-compatible model'} (vector drawing specs rendered by kdp-studio)"
+
+
+def set_spec_provider(book_path: Path, folder: str = "drawings", tool: str = SPEC_TOOL) -> list[str]:
     """interior.source -> provider spec + the drawings folder, provenance.interior_images -> ai_generated, the tool name
     added to provenance.ai_tools; edits the YAML text in place so comments survive. Returns the changes made."""
     text = book_path.read_text(encoding="utf-8")
@@ -298,17 +321,17 @@ def set_spec_provider(book_path: Path, folder: str = "drawings") -> list[str]:
     if m_img and m_img.group(2) != "ai_generated":
         text = text[:m_img.start()] + f"{m_img.group(1)}interior_images: ai_generated" + text[m_img.end():]
         changes.append("provenance.interior_images -> ai_generated")
-    if SPEC_TOOL not in text:
+    if tool not in text:
         flow = re.search(r"^( +)ai_tools: *\[([^\]]*)\]", text, re.M)
         block = re.search(r"^( +)ai_tools: *\n(?=( *)- )", text, re.M)
         if flow:
-            items = [s.strip() for s in flow.group(2).split(",") if s.strip()] + [json.dumps(SPEC_TOOL)]
+            items = [s.strip() for s in flow.group(2).split(",") if s.strip()] + [json.dumps(tool)]
             text = text[:flow.start()] + f"{flow.group(1)}ai_tools: [{', '.join(items)}]" + text[flow.end():]
         elif block:
-            text = text[:block.end()] + f"{block.group(2)}- {json.dumps(SPEC_TOOL)}\n" + text[block.end():]  # same indent as the existing items
+            text = text[:block.end()] + f"{block.group(2)}- {json.dumps(tool)}\n" + text[block.end():]  # same indent as the existing items
         else:
-            text = text.rstrip("\n") + f"\nprovenance:\n  ai_tools: [{json.dumps(SPEC_TOOL)}]\n"
-        changes.append(f"provenance.ai_tools += {SPEC_TOOL}")
+            text = text.rstrip("\n") + f"\nprovenance:\n  ai_tools: [{json.dumps(tool)}]\n"
+        changes.append(f"provenance.ai_tools += {tool}")
     if changes:
         book_path.write_text(text, encoding="utf-8")
         from ..schema import load_book

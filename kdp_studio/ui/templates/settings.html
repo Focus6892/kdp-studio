@@ -28,7 +28,7 @@
 <div id="summary-{{ dom }}" {% if not pr.complete %}hidden{% endif %}>{% for v in p.vars %}<p style="margin:4px 0"><code>{{ pr.vars[v] }}</code> <span class="ok">{{ pr.masked[v] or 'đã có' }}</span></p>{% endfor %}</div>
 <div id="fields-{{ dom }}" {% if pr.complete %}hidden{% endif %}>
 {% for v in p.vars %}<div class="field"><label><code>{{ pr.vars[v] }}</code> {% if pr.present[v] %}<span class="hint">hiện tại {{ pr.masked[v] }}</span>{% endif %}</label>
-<input type="password" name="{{ pr.vars[v] }}" style="max-width:520px" placeholder="{% if pr.present[v] %}để trống = giữ nguyên{% else %}dán key vào đây{% endif %}" autocomplete="off"></div>{% endfor %}
+<input type="{{ 'text' if v in p.public else 'password' }}" name="{{ pr.vars[v] }}" style="max-width:520px" placeholder="{% if pr.present[v] %}để trống = giữ nguyên{% elif v in p.public %}{{ 'https://oxionai.com/v1' if 'URL' in v else 'tên model, ví dụ claude-sonnet-5' }}{% else %}dán key vào đây{% endif %}" autocomplete="off"></div>{% endfor %}
 </div>
 <div class="row">
 <button type="button" class="small secondary" id="edit-{{ dom }}" onclick="toggleEdit('{{ dom }}')">{{ icon('edit', 13) }} {% if pr.complete %}Sửa{% else %}Ẩn{% endif %}</button>
@@ -42,7 +42,7 @@
 <form method="post" action="{{ url_for('settings_save') }}" style="border-top:1px dashed var(--line);padding-top:10px;margin-top:10px">
 <button type="button" class="small secondary" id="add-{{ p.id }}" onclick="document.getElementById('new-{{ p.id }}').hidden=false;this.hidden=true">{{ icon('plus', 13) }} Thêm tài khoản dự phòng (tài khoản {{ p.next_n }})</button>
 <div id="new-{{ p.id }}" hidden>
-{% for v in p.vars %}<div class="field"><label><code>{{ v }}_{{ p.next_n }}</code></label><input type="password" name="{{ v }}_{{ p.next_n }}" style="max-width:520px" placeholder="dán key của tài khoản {{ p.next_n }}" autocomplete="off"></div>{% endfor %}
+{% for v in p.vars %}<div class="field"><label><code>{{ v }}_{{ p.next_n }}</code></label><input type="{{ 'text' if v in p.public else 'password' }}" name="{{ v }}_{{ p.next_n }}" style="max-width:520px" placeholder="dán key của tài khoản {{ p.next_n }}" autocomplete="off"></div>{% endfor %}
 <div class="row"><button class="small">{{ icon('save', 13) }} Lưu tài khoản {{ p.next_n }}</button> <span class="muted">Tài khoản này được dùng khi các tài khoản trước hết quota.</span></div>
 </div>
 </form>

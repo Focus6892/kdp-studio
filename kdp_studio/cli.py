@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -328,7 +329,10 @@ def cmd_draw(args) -> int:
     print(f"\n{t['ok']}/{t['pages']} page(s) drawn with {res['engine']} -> {out_dir}; tokens {t['input_tokens']:,} in / {t['output_tokens']:,} out{think}; "
           f"list price ${t['cost_usd']:.4f}{per_page}; log {res['log']}")
     if args.set_provider:
-        for change in set_spec_provider(Path(args.book), out_dir.name):
+        from .interior.draw import tool_name
+
+        drawn_model = next((r.get("model") for r in res["pages"] if r.get("model")), args.model)
+        for change in set_spec_provider(Path(args.book), out_dir.name, tool_name(res["engine"], drawn_model)):
             print("book.yaml:", change)
     if not args.no_preview and any(out_dir.glob("*.json")):
         cmd_draw_preview(argparse.Namespace(folder=str(out_dir), out=None, size="1000x1500"))
@@ -593,6 +597,8 @@ def cmd_story_draft(args) -> int:
     brief_path = Path(args.brief)
     brief = load_story_brief(brief_path)
     out_dir = Path(args.out) if args.out else brief_path.parent / "manuscript"
+    if getattr(args, "engine", "auto") != "auto":
+        os.environ["KDP_STUDIO_LLM"] = args.engine  # llm.parse_structured honours it for every step
     res = draft_story(brief, out_dir, model=args.model, polish=args.polish, progress=print)
     print(f"\nDrafted {len(res.chapter_files)} chapter(s), {res.words:,} words -> {res.out_dir}")
     print(f"Bible: {res.bible_path} | Outline: {res.outline_path}")
@@ -1080,7 +1086,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("draw", help="Claude writes vector drawing specs for a coloring book's pages (Claude Code CLI = no API key, or the API)")
     p.add_argument("book")
     p.add_argument("--pages", help="1-based pages, e.g. 1-5,8 (default: all)")
-    p.add_argument("--engine", default="auto", choices=["auto", "cli", "api", "gemini"], help="auto = the claude command when installed, else the Anthropic API; gemini = Gemini API (GEMINI_API_KEY)")
+    p.add_argument("--engine", default="auto", choices=["auto", "cli", "api", "gemini", "compat"],
+                   help="auto = the claude command when installed, else the Anthropic API; gemini = Gemini API (GEMINI_API_KEY); compat = any OpenAI-compatible endpoint (OPENAI_COMPAT_*)")
     p.add_argument("--model", help="sonnet / opus / haiku, a full Claude model id, or a Gemini model such as gemini-2.5-flash (default: the engine's default)")
     p.add_argument("--out", help="drawings folder inside the book (default drawings)")
     p.add_argument("--overwrite", action="store_true", help="redraw pages that already have a spec")
@@ -1182,8 +1189,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     story = sub.add_parser("story", help="text books: draft with Claude, check the EPUB")
     ssub = story.add_subparsers(dest="story_cmd", required=True)
-    p = ssub.add_parser("draft", help="draft a manuscript from story_brief.yaml (bible -> outline -> chapters) with Claude, or Llama on Cloudflare Workers AI without an Anthropic key")
+    p = ssub.add_parser("draft", help="draft a manuscript from story_brief.yaml (bible -> outline -> chapters): Claude API, the claude command, an OpenAI-compatible endpoint or Cloudflare Workers AI")
     p.add_argument("--brief", required=True)
+    p.add_argument("--engine", default="auto", choices=["auto", "claude", "cli", "compat", "cloudflare"], help="force one LLM engine (default: the first configured one in that order)")
     p.add_argument("--out", help="manuscript directory (default <brief dir>/manuscript)")
     p.add_argument("--model", default="claude-opus-5-5")
     p.add_argument("--polish", action="store_true", help="second editing pass per chapter")

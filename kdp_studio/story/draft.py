@@ -120,7 +120,8 @@ SYSTEM = (
 def _require(obj, step: str):
     if obj is None:
         raise RuntimeError(f"No language model answered during the '{step}' step ({last_error() or 'no reason recorded'}): "
-                           "add ANTHROPIC_API_KEY or a Cloudflare account (Cài đặt), wait for the quota to reset, and run the draft again.")
+                           "configure an engine (ANTHROPIC_API_KEY, the claude command, an OpenAI-compatible endpoint or Cloudflare in Cài đặt), "
+                           "wait for the quota or outage to pass, and run the draft again.")
     return obj
 
 

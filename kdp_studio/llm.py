@@ -9,6 +9,7 @@ decide whether to try at all.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -99,6 +100,35 @@ def _cli_structured(system: str, user: str, output_model: type[T]) -> T | None:
     return None
 
 
+def compat_available() -> bool:
+    """An OpenAI-compatible endpoint configured with OPENAI_COMPAT_BASE_URL / _MODEL (Oxion AI, OpenRouter, Ollama ...)."""
+    from . import compat
+
+    return compat.available()
+
+
+def _compat_structured(system: str, user: str, output_model: type[T], max_tokens: int) -> T | None:
+    from . import compat
+
+    global _LAST_ENGINE, _LAST_ERROR
+    try:
+        obj, res = compat.ask_json(system + " Respond with one JSON object only - no prose, no code fences - matching this JSON schema: "
+                                   + json.dumps(output_model.model_json_schema()), user, max_tokens=min(16000, max_tokens))
+    except compat.CompatError as exc:
+        _LAST_ERROR = f"OpenAI-compatible: {str(exc)[:160]}"
+        log.warning("%s", _LAST_ERROR)
+        return None
+    try:
+        parsed = output_model.model_validate(obj)
+    except Exception as exc:  # noqa: BLE001 - pydantic validation
+        _LAST_ERROR = f"OpenAI-compatible: reply did not match {output_model.__name__}"
+        log.warning("%s (%s)", _LAST_ERROR, str(exc).splitlines()[0][:120])
+        return None
+    _LAST_ENGINE, _LAST_ERROR = f"{res.model} via OpenAI-compatible API", None
+    log.info("OpenAI-compatible %s", res.summary())
+    return parsed
+
+
 def _cloudflare_structured(system: str, user: str, output_model: type[T], max_tokens: int) -> T | None:
     """The free fallback: a Workers AI text model gets the JSON schema in its instructions and its reply is parsed
     and validated. Accounts and quota blocks are shared with the image providers (state/provider_state.json)."""
@@ -161,25 +191,38 @@ def _cloudflare_structured(system: str, user: str, output_model: type[T], max_to
     return None
 
 
+ENGINES = ("claude", "cli", "compat", "cloudflare")  # the auto order; KDP_STUDIO_LLM=<engine> forces one
+
+
 def parse_structured(system: str, user: str, output_model: type[T], model: str = DEFAULT_MODEL, max_tokens: int = 16000) -> T | None:
-    """One structured-output call: Claude through the API when a key is set, else Claude through the Claude Code CLI
-    (the subscription on this PC), else a Cloudflare Workers AI text model (free), else None."""
+    """One structured-output call. Engines in order unless KDP_STUDIO_LLM names one: Claude through the API (key),
+    Claude through the Claude Code CLI (subscription), an OpenAI-compatible endpoint (Oxion AI, OpenRouter, Ollama ...),
+    a Cloudflare Workers AI text model (free). None when nothing answers; last_error() says why."""
     global _LAST_ENGINE, _LAST_ERROR
     _LAST_ERROR = None
-    if claude_available():
-        out = _claude_structured(system, user, output_model, model, max_tokens)
-        if out is not None:
-            _LAST_ENGINE = f"Claude ({model})"
-            return out
-        _LAST_ERROR = "Claude: không trả lời được (xem log)"
-    if cli_available():
-        out = _cli_structured(system, user, output_model)
-        if out is not None:
-            return out
-    if cloudflare_available():
-        return _cloudflare_structured(system, user, output_model, max_tokens)
-    _LAST_ERROR = _LAST_ERROR or "chưa có key Anthropic, lệnh claude (Claude Code) hay Cloudflare (Cài đặt)"
-    log.warning("no LLM available: %s; skipping this step", _LAST_ERROR)
+    forced = (os.environ.get("KDP_STUDIO_LLM") or "auto").strip().lower()
+    for engine in ([forced] if forced in ENGINES else ENGINES):
+        if engine == "claude" and claude_available():
+            out = _claude_structured(system, user, output_model, model, max_tokens)
+            if out is not None:
+                _LAST_ENGINE = f"Claude ({model})"
+                return out
+            _LAST_ERROR = "Claude: không trả lời được (xem log)"
+        elif engine == "cli" and cli_available():
+            out = _cli_structured(system, user, output_model)
+            if out is not None:
+                return out
+        elif engine == "compat" and compat_available():
+            out = _compat_structured(system, user, output_model, max_tokens)
+            if out is not None:
+                return out
+        elif engine == "cloudflare" and cloudflare_available():
+            out = _cloudflare_structured(system, user, output_model, max_tokens)
+            if out is not None:
+                return out
+    _LAST_ERROR = _LAST_ERROR or ("chưa có key Anthropic, lệnh claude, endpoint OpenAI-compatible hay Cloudflare (Cài đặt)" if forced not in ENGINES
+                                  else f"engine {forced} (KDP_STUDIO_LLM) chưa cấu hình hoặc không trả lời")
+    log.warning("no LLM answered: %s", _LAST_ERROR)
     return None
 
 

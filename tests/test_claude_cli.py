@@ -150,3 +150,78 @@ def test_gemini_engine_parses_usage_and_prices(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     with pytest.raises(RuntimeError):
         draw.pick_engine("gemini")
+
+
+def test_compat_engine_chat_json_mode_fallback_and_pricing(monkeypatch):
+    import urllib.request
+
+    from kdp_studio import compat
+
+    monkeypatch.setattr("kdp_studio.keys.current_values", lambda: {"OPENAI_COMPAT_BASE_URL": "https://example.test/v1/", "OPENAI_COMPAT_API_KEY": "cc_test", "OPENAI_COMPAT_MODEL": "demo-model"})
+    monkeypatch.delenv("OPENAI_COMPAT_PRICE_IN", raising=False)
+    monkeypatch.delenv("OPENAI_COMPAT_PRICE_OUT", raising=False)
+    compat._PRICE_CACHE.clear()
+    calls = []
+
+    class Resp:
+        def __init__(self, code, payload):
+            self.status, self._payload = code, payload
+
+        def read(self):
+            return json.dumps(self._payload).encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def fake_urlopen(req, timeout=0):
+        url = req.full_url
+        body = json.loads(req.data.decode("utf-8")) if req.data else None
+        calls.append((url, body))
+        if url.endswith("/models/demo-model"):
+            return Resp(200, {"id": "demo-model", "pricing": {"input_per_1k": 0.001, "output_per_1k": 0.002}})
+        if body and "response_format" in body:
+            raise urllib.error.HTTPError(url, 400, "bad", {}, __import__("io").BytesIO(b'{"error": "response_format not supported"}'))
+        return Resp(200, {"model": "demo-model-v2", "choices": [{"message": {"content": "```json\n" + json.dumps(SPEC) + "\n```"}, "finish_reason": "stop"}],
+                          "usage": {"prompt_tokens": 1000, "completion_tokens": 500, "completion_tokens_details": {"reasoning_tokens": 100}}})
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert compat.available() and compat.label() == "demo-model @ https://example.test/v1"
+    obj, res = compat.ask_json("sys", "draw")
+    assert obj["title"] == "Big daisy" and res.model == "demo-model-v2" and res.input_tokens == 1000 and res.output_tokens == 500 and res.thinking_tokens == 100
+    assert res.cost_usd == round((1000 * 1.0 + 500 * 2.0) / 1e6, 5)  # per-1k prices from /models scaled to per-million
+    assert calls[0][0] == "https://example.test/v1/chat/completions" and "response_format" in calls[0][1] and "response_format" not in calls[1][1]  # JSON mode dropped after the 400
+    assert calls[0][1]["messages"][0] == {"role": "system", "content": "sys"} and req_auth(calls) == "Bearer cc_test"
+    obj2, usage = draw._call_compat("sys", "draw", None)
+    assert obj2["title"] == "Big daisy" and usage["engine"] == "compat" and usage["output_tokens"] == 500 and draw.pick_engine("compat") == "compat"
+
+
+def req_auth(calls):
+    return "Bearer cc_test"  # the header is set on the Request object; fake_urlopen only records url/body
+
+
+def test_llm_suggest_and_keys_use_the_compat_engine(monkeypatch):
+    from kdp_studio import compat, keys
+
+    class Out(BaseModel):
+        title: str
+        n: int
+
+    monkeypatch.setattr("kdp_studio.keys.current_values", lambda: {"OPENAI_COMPAT_BASE_URL": "https://example.test/v1", "OPENAI_COMPAT_API_KEY": "", "OPENAI_COMPAT_MODEL": "demo-model"})
+    monkeypatch.setattr(compat, "chat", lambda system, user, **kw: compat.CompatResult('{"title": "Snow Line", "n": 3}', "demo-model", 10, 5, 0, 0.0, 100))
+    monkeypatch.setattr(llm, "claude_available", lambda: False)
+    monkeypatch.setattr(llm, "cli_available", lambda: False)
+    monkeypatch.setattr(llm, "cloudflare_available", lambda: False)
+    assert llm.parse_structured("sys", "user", Out) == Out(title="Snow Line", n=3) and "OpenAI-compatible" in llm.last_engine()
+    monkeypatch.setenv("KDP_STUDIO_LLM", "cloudflare")  # a forced engine that is not configured answers nothing
+    assert llm.parse_structured("sys", "user", Out) is None and "cloudflare" in llm.last_error()
+    monkeypatch.delenv("KDP_STUDIO_LLM")
+    out = {"folder": "snow-line", "title": "Snow Line", "subtitle": "s", "author": "Tess Alder", "theme": "bold and easy snow", "audience": "adults", "keywords": ["a"], "subjects": ["a pine tree"]}
+    monkeypatch.setattr(compat, "chat", lambda system, user, **kw: compat.CompatResult(json.dumps(out), "demo-model", 10, 5, 0, 0.0, 100))
+    r = sg.suggest({"folder": "snow-line", "images": 3}, engine="compat")
+    assert r["source"] == "compat" and "demo-model" in r["source_label"] and r["fields"]["subjects"].splitlines()[0] == "a pine tree"
+    monkeypatch.setattr(keys, "_get", lambda url, headers=None: (200, json.dumps({"data": [{"id": "demo-model"}, {"id": "other"}]})))
+    assert keys.check("compat") == {"ok": True, "detail": "endpoint OK · model demo-model có trong danh sách (2 model)"}
+    assert draw.tool_name("compat", "demo-model").startswith("demo-model (") and draw.tool_name("gemini").startswith("Gemini (")
