@@ -23,3 +23,6 @@ browser-profile/
 # license signing key (owner only)
 *.pem
 license_private*
+
+# rendered previews of drawing specs (kdp draw-preview)
+**/_preview/

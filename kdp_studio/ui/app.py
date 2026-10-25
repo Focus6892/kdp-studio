@@ -283,13 +283,15 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
             s.close()
         art = artifacts_for(b, fmt)
         runs = sorted((p for p in runs_dir.glob(f"*-{b.id}-*") if p.is_dir()), reverse=True)[:5] if runs_dir.is_dir() else []
+        from .. import claude_cli
         from ..llm import claude_available, cloudflare_available
 
         is_story = isinstance(b.interior, StoryInterior)
         story = manuscript_stats(b.book_dir, b.interior.manuscript_dir, b.interior.chapters_glob) if is_story else None
         return render_template("book.html", idx=idx, e=entry, b=b, fmt=fmt, checklist=checklist, art={k: (str(v) if v else None) for k, v in art.items()}, title_rows=title_rows, runs=[r.name for r in runs],
                                providers=["auto", "placeholder", "spec", "local", "pollinations", "cloudflare", "openai", "google", "stability"], is_coloring=isinstance(b.interior, ColoringInterior),
-                               is_story=is_story, story=story, brief_exists=(b.book_dir / "story_brief.yaml").is_file(), llm_ready=claude_available() or cloudflare_available())
+                               is_story=is_story, story=story, brief_exists=(b.book_dir / "story_brief.yaml").is_file(), llm_ready=claude_available() or claude_cli.available() or cloudflare_available(),
+                               cli_ready=claude_cli.available(), api_ready=claude_available())
 
     @app.post("/book/<int:idx>/build")
     def build(idx: int):
@@ -552,6 +554,24 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
         except FileNotFoundError as exc:
             return redirect(url_for("book", idx=idx, m=str(exc)))
         return redirect(url_for("job", job_id=job_id))
+
+    @app.post("/book/<int:idx>/draw")
+    def draw_pages(idx: int):
+        """Claude writes vector drawing specs for the pages of a coloring book (Claude Code CLI, else the API) as a job."""
+        entry, b = book_at(idx)
+        if not isinstance(b.interior, ColoringInterior):
+            abort(400)
+        f = request.form
+        cmd = cli_command(["draw", entry["path"], "--engine", f.get("engine") or "auto"])
+        if f.get("pages"):
+            cmd += ["--pages", f["pages"]]
+        if f.get("model"):
+            cmd += ["--model", f["model"]]
+        if f.get("overwrite"):
+            cmd.append("--overwrite")
+        if f.get("set_provider"):
+            cmd.append("--set-provider")
+        return redirect(url_for("job", job_id=jobs.start(f"vẽ vector {entry['folder']}", cmd, book_idx=idx)))
 
     @app.post("/create/suggest")
     def create_suggest():

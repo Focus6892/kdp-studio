@@ -197,6 +197,8 @@ def _round_caps(d: ImageDraw.ImageDraw, pts: list[tuple[float, float]], w: int) 
 def load_specs(folder: Path) -> list[tuple[Path, dict]]:
     out = []
     for p in sorted(folder.glob("*.json")):
+        if p.name.startswith("_"):  # _draw_log.json and other bookkeeping next to the specs
+            continue
         out.append((p, json.loads(p.read_text(encoding="utf-8"))))
     if not out:
         raise FileNotFoundError(f"No drawing specs (*.json) in {folder}")

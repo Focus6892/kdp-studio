@@ -275,6 +275,10 @@ def cmd_doctor(args) -> int:
     row(len(fonts) >= 6, "Fonts", f"{len(fonts)} bundled" if fonts else "assets/fonts missing")
     present = [p["id"] for p in keymod.status_table() if p["vars"] and any(pr["complete"] for pr in p["profiles"])]
     row(None if not present else True, "API keys", ", ".join(present) if present else "none yet (Cai dat in the web interface)")
+    from . import claude_cli
+
+    row(True if claude_cli.available() else None, "claude CLI", f"{claude_cli.binary()} - Claude through your subscription, no API key (kdp draw, story draft, suggestions)"
+        if claude_cli.available() else "claude command not found: install Claude Code and sign in to use Claude without an API key")
     try:
         from . import license as lic
 
@@ -304,6 +308,31 @@ def cmd_ui(args) -> int:
         print(f"the web UI needs Flask: python -m pip install --user flask ({exc})")
         return 1
     return serve(host=args.host, port=args.port, book_dirs=[Path(d) for d in (args.books or [])], open_browser=not args.no_browser)
+
+
+def cmd_draw(args) -> int:
+    """Claude writes vector drawing specs for the pages of a coloring book: Claude Code CLI (no API key) or the API."""
+    from .interior.draw import draw_specs, parse_pages, set_spec_provider
+    from .schema import ColoringInterior
+
+    book = load_book(args.book)
+    if not isinstance(book.interior, ColoringInterior):
+        print("kdp draw chỉ dành cho sách tô màu (interior.type: coloring)")
+        return 2
+    out_dir = book.book_dir / (args.out or "drawings")
+    pages = parse_pages(args.pages, book.interior.images)
+    res = draw_specs(book, out_dir, pages=pages, engine=args.engine, model=args.model, overwrite=args.overwrite, retries=args.retries, progress=print)
+    t = res["totals"]
+    per_page = f" = ${t['cost_usd'] / t['pages']:.4f} per page" if t["pages"] else ""
+    think = f" ({t['thinking_tokens']:,} thinking)" if t["thinking_tokens"] else ""
+    print(f"\n{t['ok']}/{t['pages']} page(s) drawn with {res['engine']} -> {out_dir}; tokens {t['input_tokens']:,} in / {t['output_tokens']:,} out{think}; "
+          f"list price ${t['cost_usd']:.4f}{per_page}; log {res['log']}")
+    if args.set_provider:
+        for change in set_spec_provider(Path(args.book), out_dir.name):
+            print("book.yaml:", change)
+    if not args.no_preview and any(out_dir.glob("*.json")):
+        cmd_draw_preview(argparse.Namespace(folder=str(out_dir), out=None, size="1000x1500"))
+    return 0 if t["ok"] == t["pages"] else 1
 
 
 def cmd_draw_preview(args) -> int:
@@ -1048,6 +1077,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--lora", help="Hugging Face repo id (or repo:file.safetensors) of a coloring-book LoRA to pre-download")
     p.add_argument("--skip-install", action="store_true", help="only download the models")
     p.set_defaults(func=cmd_local_setup)
+    p = sub.add_parser("draw", help="Claude writes vector drawing specs for a coloring book's pages (Claude Code CLI = no API key, or the API)")
+    p.add_argument("book")
+    p.add_argument("--pages", help="1-based pages, e.g. 1-5,8 (default: all)")
+    p.add_argument("--engine", default="auto", choices=["auto", "cli", "api"], help="auto = the claude command when installed, else the API")
+    p.add_argument("--model", help="sonnet / opus / haiku or a full model id (default: the engine's default)")
+    p.add_argument("--out", help="drawings folder inside the book (default drawings)")
+    p.add_argument("--overwrite", action="store_true", help="redraw pages that already have a spec")
+    p.add_argument("--retries", type=int, default=1, help="extra attempts when a spec fails the checks (default 1)")
+    p.add_argument("--set-provider", action="store_true", help="point interior.source at the drawings (provider spec) and declare the AI-drawn interior in book.yaml")
+    p.add_argument("--no-preview", action="store_true", help="skip rendering drawings/_preview")
+    p.set_defaults(func=cmd_draw)
     p = sub.add_parser("draw-preview", help="render vector drawing specs (JSON) to PNG line art for review")
     p.add_argument("folder")
     p.add_argument("--size", default="1000x1500", help="pixel size, e.g. 2550x3300 for 8.5x11 at 300 DPI (default 1000x1500)")

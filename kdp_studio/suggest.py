@@ -1,9 +1,10 @@
 """Hoàn thiện form "Tạo sách": từ vài ô đã gõ, điền nốt mọi ô còn lại sao cho khớp nhau.
 
-Engines, tried in order (env KDP_STUDIO_SUGGEST = auto | claude | cloudflare | offline, default auto):
+Engines, tried in order (env KDP_STUDIO_SUGGEST = auto | claude | cli | cloudflare | offline, default auto):
   1. Claude through the anthropic SDK (ANTHROPIC_API_KEY), structured output
-  2. a Cloudflare Workers AI text model (CF_ACCOUNT_ID + CF_API_TOKEN) - free tier, the same keys that draw the pages
-  3. offline: the built-in niche library (themes.py) plus the pipeline's own variation templates, so the
+  2. Claude through the Claude Code CLI (`claude -p`, the subscription signed in on this PC, no key)
+  3. a Cloudflare Workers AI text model (CF_ACCOUNT_ID + CF_API_TOKEN) - free tier, the same keys that draw the pages
+  4. offline: the built-in niche library (themes.py) plus the pipeline's own variation templates, so the
      button always works without any key.
 Typed values are anchors: they are kept and everything else is generated around them; overwrite=True
 regenerates every field and treats the typed values as hints (typos fixed). Whatever the engine, the result
@@ -297,7 +298,7 @@ def _merge(llm: dict | None, offline: dict, given: dict, images: int, overwrite:
 def run_engines(system: str, user: str, out_model: type[BaseModel], json_shape: str, max_tokens: int, engine: str | None = None) -> tuple[dict | None, str, str, list[str]]:
     """Try the engines in order (the given engine or env KDP_STUDIO_SUGGEST): (model fields or None, source, label, notes)."""
     engine = (engine or os.environ.get("KDP_STUDIO_SUGGEST") or "auto").strip().lower()
-    if engine not in ("auto", "claude", "cloudflare", "offline"):
+    if engine not in ("auto", "claude", "cli", "cloudflare", "offline"):
         engine = "auto"
     vals = keymod.current_values()
     llm: dict | None = None
@@ -311,6 +312,17 @@ def run_engines(system: str, user: str, out_model: type[BaseModel], json_shape: 
                 notes.append(f"Claude: {_short(exc)}")
         elif engine == "claude":
             notes.append("Claude: chưa có ANTHROPIC_API_KEY (thêm ở Cài đặt)")
+    if llm is None and engine in ("auto", "cli"):
+        from . import claude_cli
+
+        if claude_cli.available():
+            try:
+                llm, res = claude_cli.ask_json(user, system=system + " Respond with one JSON object only - no prose, no code fences - shaped like: " + json_shape)
+                source, label = "cli", f"Claude Code CLI ({res.model})"
+            except Exception as exc:  # noqa: BLE001
+                notes.append(f"Claude Code CLI: {_short(exc)}")
+        elif engine == "cli":
+            notes.append("Claude Code CLI: không thấy lệnh claude (cài Claude Code và đăng nhập)")
     if llm is None and engine in ("auto", "cloudflare"):
         if any(p["complete"] for p in keymod.profiles("cloudflare")):
             try:
@@ -321,7 +333,7 @@ def run_engines(system: str, user: str, out_model: type[BaseModel], json_shape: 
         elif engine == "cloudflare":
             notes.append("Cloudflare: chưa có CF_ACCOUNT_ID / CF_API_TOKEN (thêm ở Cài đặt)")
     if engine == "auto" and llm is None and not notes:
-        notes.append("chưa có key Anthropic hay Cloudflare nên dùng thư viện mẫu; thêm key ở Cài đặt để gợi ý sát chủ đề hơn")
+        notes.append("chưa có key Anthropic, lệnh claude hay Cloudflare nên dùng thư viện mẫu; thêm key ở Cài đặt (hoặc cài Claude Code) để gợi ý sát chủ đề hơn")
     return llm, source, label, notes
 
 

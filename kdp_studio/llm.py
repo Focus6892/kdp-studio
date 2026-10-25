@@ -59,6 +59,46 @@ def cloudflare_available() -> bool:
     return any(p["complete"] for p in keymod.profiles("cloudflare"))
 
 
+def cli_available() -> bool:
+    """The Claude Code command line (`claude -p`): Claude through the subscription signed in on this PC, no API key."""
+    from . import claude_cli
+
+    return claude_cli.available()
+
+
+def _cli_structured(system: str, user: str, output_model: type[T]) -> T | None:
+    """The model's JSON schema as the CLI's structured output; a plain JSON reply if the CLI rejects the schema."""
+    from . import claude_cli
+    from .suggest import parse_json_object
+
+    global _LAST_ENGINE, _LAST_ERROR
+    schema = output_model.model_json_schema()
+    for use_schema in (True, False):
+        try:
+            res = claude_cli.run(user, system=system, schema=schema if use_schema else None)
+        except claude_cli.CLIError as exc:
+            _LAST_ERROR = f"Claude Code CLI: {str(exc)[:160]}"
+            log.warning("%s", _LAST_ERROR)
+            if use_schema:
+                continue
+            return None
+        obj = res.structured if isinstance(res.structured, dict) else parse_json_object(res.text)
+        if not isinstance(obj, dict):
+            _LAST_ERROR = "Claude Code CLI: no JSON object in the reply"
+            log.warning("%s", _LAST_ERROR)
+            continue
+        try:
+            parsed = output_model.model_validate(obj)
+        except Exception as exc:  # noqa: BLE001 - pydantic validation
+            _LAST_ERROR = f"Claude Code CLI: reply did not match {output_model.__name__}"
+            log.warning("%s (%s)", _LAST_ERROR, str(exc).splitlines()[0][:120])
+            continue
+        _LAST_ENGINE, _LAST_ERROR = f"Claude ({res.model}) via Claude Code CLI", None
+        log.info("Claude Code CLI %s", res.summary())
+        return parsed
+    return None
+
+
 def _cloudflare_structured(system: str, user: str, output_model: type[T], max_tokens: int) -> T | None:
     """The free fallback: a Workers AI text model gets the JSON schema in its instructions and its reply is parsed
     and validated. Accounts and quota blocks are shared with the image providers (state/provider_state.json)."""
@@ -122,7 +162,8 @@ def _cloudflare_structured(system: str, user: str, output_model: type[T], max_to
 
 
 def parse_structured(system: str, user: str, output_model: type[T], model: str = DEFAULT_MODEL, max_tokens: int = 16000) -> T | None:
-    """One structured-output call: Claude when a key is set, else a Workers AI text model (free), else None."""
+    """One structured-output call: Claude through the API when a key is set, else Claude through the Claude Code CLI
+    (the subscription on this PC), else a Cloudflare Workers AI text model (free), else None."""
     global _LAST_ENGINE, _LAST_ERROR
     _LAST_ERROR = None
     if claude_available():
@@ -131,9 +172,13 @@ def parse_structured(system: str, user: str, output_model: type[T], model: str =
             _LAST_ENGINE = f"Claude ({model})"
             return out
         _LAST_ERROR = "Claude: không trả lời được (xem log)"
+    if cli_available():
+        out = _cli_structured(system, user, output_model)
+        if out is not None:
+            return out
     if cloudflare_available():
         return _cloudflare_structured(system, user, output_model, max_tokens)
-    _LAST_ERROR = _LAST_ERROR or "chưa có key Anthropic hay Cloudflare (Cài đặt)"
+    _LAST_ERROR = _LAST_ERROR or "chưa có key Anthropic, lệnh claude (Claude Code) hay Cloudflare (Cài đặt)"
     log.warning("no LLM available: %s; skipping this step", _LAST_ERROR)
     return None
 
