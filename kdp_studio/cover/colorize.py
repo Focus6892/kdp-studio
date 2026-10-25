@@ -55,10 +55,17 @@ def colorize_line_art(art: Image.Image, colors: list[str] | None = None, seed: i
     return Image.fromarray(out.astype(np.uint8), "RGB")
 
 
-def foreground_mask(img: Image.Image, white_threshold: int = 235) -> np.ndarray:
-    """True where the artwork is (anything that is not near-white), with interior holes filled."""
-    g = np.asarray(img.convert("L"))
-    mask = g < white_threshold
+def foreground_mask(img: Image.Image, white_threshold: int = 235, tolerance: int = 48) -> np.ndarray:
+    """True where the artwork is, with interior holes filled. The background colour is read from the image border
+    (models asked for white sometimes deliver black or cream); pixels further than `tolerance` from it are artwork."""
+    rgb = np.asarray(img.convert("RGB")).astype(np.int16)
+    h, w, _ = rgb.shape
+    b = max(2, min(h, w) // 40)
+    border = np.concatenate([rgb[:b].reshape(-1, 3), rgb[-b:].reshape(-1, 3), rgb[:, :b].reshape(-1, 3), rgb[:, -b:].reshape(-1, 3)])
+    bg = np.median(border, axis=0)
+    mask = np.abs(rgb - bg).max(axis=2) > tolerance
+    if bg.mean() >= white_threshold:  # the usual white page: anything darker than near-white counts too
+        mask |= np.asarray(img.convert("L")) < white_threshold
     mask = ndimage.binary_fill_holes(mask)
     mask = ndimage.binary_opening(mask, structure=np.ones((3, 3), dtype=bool))
     return mask

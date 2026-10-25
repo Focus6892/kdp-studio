@@ -50,7 +50,9 @@ def reset_time(provider_id: str, message: str, now: dt.datetime | None = None) -
     if "http 401" in m or "http 403" in m:
         return now + dt.timedelta(hours=24)
     if provider_id == "cloudflare" and ("daily free allocation" in m or "neurons" in m):
-        return (now + dt.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        # Cloudflare documents a 00:00 UTC reset, but on 2026-10-25 the account was still refused at 04:10 UTC after
+        # exhausting the allocation the previous afternoon; a two-hour retry window costs one refused call per try.
+        return now + dt.timedelta(hours=2)
     if "http 402" in m or "insufficient" in m or "balance" in m or "credit" in m or "billing" in m:
         return now + dt.timedelta(hours=24)
     if provider_id == "pollinations":

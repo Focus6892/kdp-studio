@@ -88,7 +88,7 @@ def test_failover_switches_on_quota_and_remembers(tmp_path):
     out = prov.generate("p", 0, 0, tmp_path / "0.png", (1024, 1024))
     assert out.exists() and a.calls == 1 and b.calls == 1 and prov.profile == "cloudflare#2" and prov.used == ["cloudflare"]
     until = state.exhausted_until("cloudflare")
-    assert until is not None and (until.hour, until.minute) == (0, 0) and until > dt.datetime.now(dt.timezone.utc)  # Cloudflare resets at 00:00 UTC
+    assert until is not None and dt.timedelta(hours=1, minutes=50) < until - dt.datetime.now(dt.timezone.utc) <= dt.timedelta(hours=2)  # Cloudflare: retry in two hours
     prov.generate("p", 1, 0, tmp_path / "1.png", (1024, 1024))
     assert a.calls == 1 and b.calls == 2  # the exhausted member is not asked again
     # a later build (another process) reads the state file and skips account 1 without calling it
@@ -120,7 +120,7 @@ def test_failover_refused_key_switches_but_moderation_does_not(tmp_path):
 
 def test_reset_time_rules():
     now = dt.datetime(2026, 10, 24, 13, 0, tzinfo=dt.timezone.utc)
-    assert fo.reset_time("cloudflare", "HTTP 429: you have used up your daily free allocation of 10,000 neurons", now) == dt.datetime(2026, 10, 25, 0, 0, tzinfo=dt.timezone.utc)
+    assert fo.reset_time("cloudflare", "HTTP 429: you have used up your daily free allocation of 10,000 neurons", now) == now + dt.timedelta(hours=2)
     assert fo.reset_time("openai", "HTTP 429: rate limit", now) == now + dt.timedelta(hours=1)
     assert fo.reset_time("openai", "HTTP 402: insufficient_quota", now) == now + dt.timedelta(hours=24)
     assert fo.reset_time("stability", "HTTP 401: unauthorized", now) == now + dt.timedelta(hours=24)
