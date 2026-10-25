@@ -18,7 +18,8 @@ from .. import specs
 from ..fonts import find_font
 from ..interior.generate import API_PROVIDERS, draw_line_art, make_provider
 from ..interior.layout import register_font
-from ..schema import Book, ColoringInterior
+from ..schema import Book, ColoringInterior, Palette
+from .colorize import colorize_line_art, make_sticker
 from ..util import ensure_dir, hex_to_rgb
 from .geometry import CoverGeometry, cover_geometry
 from .text import draw_lines_centered, draw_lines_left, fit_text, line_height, load_font, wrap
@@ -60,26 +61,62 @@ def placeholder_cover_art(rng: random.Random, size: tuple[int, int], accent: str
     return base
 
 
+THEMES: dict[str, dict] = {
+    # the two looks that dominate the coloring-book best-seller lists: vivid art on black, or pastel with an outlined title
+    "midnight": dict(background="#0B0B0D", accent="#F28C28", text="#F2F2F2", title_text="#FFFFFF", subtitle="#F28C28", author="#FFFFFF", title_outline=None, card="#FFFFFF", back="#0B0B0D"),
+    "pastel": dict(background="#CFE9F7", accent="#E8588A", text="#1E2A44", title_text="#FFFFFF", subtitle="#1E2A44", author="#1E2A44", title_outline="#1E2A44", card="#FFFFFF", back="#CFE9F7"),
+    "cream": dict(background="#FBF3E4", accent="#C94C4C", text="#2B2B2B", title_text="#2B2B2B", subtitle="#C94C4C", author="#C94C4C", title_outline=None, card="#FFFFFF", back="#FBF3E4"),
+}
+
+
+def effective_palette(book: Book) -> Palette:
+    """The theme preset with whatever `cover.palette` sets explicitly on top."""
+    pal = book.cover.palette
+    preset = THEMES.get(book.cover.theme)
+    if preset is None:
+        return pal
+    return Palette(**{**preset, **{k: getattr(pal, k) for k in pal.model_fields_set}})
+
+
+def interior_art_pages(book: Book) -> list[Path]:
+    d = book.build_dir / "art"
+    return sorted(d.glob("*.png")) if d.is_dir() else []
+
+
+def _size_px(spec: str) -> tuple[int, int]:
+    w, h = spec.lower().split("x")
+    return int(w), int(h)
+
+
 def load_art(book: Book, size: tuple[int, int], out_dir: Path) -> Image.Image:
+    """The cover artwork on a white page, without text: a file, one of the book's own pages filled with flat colours,
+    a generated illustration, or the placeholder. The layout turns it into a sticker afterwards."""
     art = book.cover.art
     if art.provider == "file":
         assert art.path is not None
         with Image.open(book.resolve(art.path)) as im:
             return im.convert("RGB")
-    if art.provider == "placeholder":
-        rng = random.Random(f"cover:{book.id}:{art.seed}")
-        return placeholder_cover_art(rng, size, book.cover.palette.accent, book.cover.palette.background)
-    if art.provider in API_PROVIDERS:
+    if art.provider == "colorize":
+        pages = interior_art_pages(book)
+        if pages:
+            pick = pages[art.page % len(pages)] if art.page is not None else pages[0]
+            log.info("cover art: colouring interior page %s", pick.name)
+            with Image.open(pick) as im:
+                return colorize_line_art(im, art.colors, seed=art.seed)
+        log.warning("cover art 'colorize' needs a built interior (build/art/*.png); using the placeholder art")
+    elif art.provider in API_PROVIDERS or art.provider == "auto":
         theme = book.interior.theme if isinstance(book.interior, ColoringInterior) else book.metadata.title
         prompt = art.prompt or (
-            f"Book cover illustration for a coloring book about {theme}: vibrant fully colored artwork, "
-            "clean composition with calm empty space in the upper third, no text, no letters, no watermark"
+            f"a single beautiful {theme} arrangement centered on a plain white background, vibrant fully colored flat illustration "
+            "with thick black outlines, sticker style, soft shading, lots of empty white space around it, no text, no letters, no watermark"
         )
-        provider = make_provider(art, book.book_dir, negative_prompt="text, letters, watermark, logo, signature")
-        path = provider.generate(prompt, 0, 0, ensure_dir(out_dir) / "cover_art_raw.png", size)
+        provider = make_provider(art, book.book_dir, negative_prompt="text, letters, watermark, logo, signature, frame, border")
+        path = provider.generate(prompt, 0, 0, ensure_dir(out_dir) / "cover_art_raw.png", _size_px(art.size))
         with Image.open(path) as im:
             return im.convert("RGB")
-    raise ValueError(f"Unknown cover art provider {art.provider}")
+    rng = random.Random(f"cover:{book.id}:{art.seed}")
+    pal = effective_palette(book)
+    return placeholder_cover_art(rng, size, pal.accent, "#FFFFFF")
 
 
 def cover_fit(img: Image.Image, size: tuple[int, int]) -> Image.Image:
@@ -94,10 +131,56 @@ def cover_fit(img: Image.Image, size: tuple[int, int]) -> Image.Image:
 
 
 # --------------------------------------------------------------------------- composition
+def _draw_centered(d: ImageDraw.ImageDraw, lines: list[str], font, cx: float, y: float, fill, spacing: float = 1.0, stroke=None, stroke_w: int = 0) -> float:
+    for line in lines:
+        x = cx - font.getlength(line) / 2
+        d.text((x, y), line, font=font, fill=fill, stroke_width=stroke_w if stroke else 0, stroke_fill=stroke)
+        y += line_height(font) * spacing
+    return y
+
+
+def _draw_badge(d: ImageDraw.ImageDraw, text: str, center: tuple[int, int], radius: int, fill, text_rgb, font_path: Path) -> None:
+    cx, cy = center
+    d.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=fill)
+    font, lines = fit_text(text.upper(), font_path, radius * 1.6, radius * 1.3, max_size=int(radius * 0.7), min_size=int(radius * 0.25), max_lines=2, spacing=0.95)
+    total = line_height(font) * 0.95 * len(lines)
+    _draw_centered(d, lines, font, cx, cy - total / 2, text_rgb, spacing=0.95)
+
+
 def compose_front(book: Book, size: tuple[int, int], art: Image.Image) -> Image.Image:
-    """Front cover composition used for both the print front (with bleed) and the eBook cover."""
+    """Front cover for both the print front (with bleed) and the eBook cover. Poster layout: the art as a sticker on a
+    plain background in the upper two thirds, then a big display title, a condensed subtitle in the accent colour and
+    the author in a script face - the structure shared by the top-selling coloring books."""
+    if book.cover.layout == "band":
+        return _compose_front_band(book, size, art)
     w, h = size
-    pal = book.cover.palette
+    pal = effective_palette(book)
+    bg = hex_to_rgb(pal.background)
+    img = Image.new("RGB", size, bg)
+    zone_top, zone_bottom, zone_w = int(h * 0.05), int(h * 0.63), int(w * 0.88)
+    piece = make_sticker(art, pal.background, book.cover.art.halo, halo_px=max(4, int(w * 0.012))) if book.cover.art.sticker else art.convert("RGB")
+    scale = min(zone_w / piece.width, (zone_bottom - zone_top) / piece.height)
+    piece = piece.resize((max(1, int(piece.width * scale)), max(1, int(piece.height * scale))), Image.LANCZOS)
+    img.paste(piece, ((w - piece.width) // 2, zone_top + (zone_bottom - zone_top - piece.height) // 2))
+    d = ImageDraw.Draw(img)
+    inner_w = int(w * 0.88)
+    outline = hex_to_rgb(pal.title_outline) if pal.title_outline else None
+    t_font, t_lines = fit_text(book.metadata.title, find_font(book.cover.title_font, "display"), inner_w, int(h * 0.165), max_size=int(w * 0.17), min_size=int(w * 0.06), max_lines=2, spacing=0.95)
+    y = _draw_centered(d, t_lines, t_font, w / 2, int(h * 0.655), hex_to_rgb(pal.title_text), spacing=0.95, stroke=outline, stroke_w=max(2, int(w * 0.006)))
+    if book.metadata.subtitle:
+        s_font, s_lines = fit_text(book.metadata.subtitle.upper(), find_font(book.cover.subtitle_font, "condensed"), inner_w, int(h * 0.06), max_size=int(w * 0.07), min_size=int(w * 0.028), max_lines=1)
+        y = _draw_centered(d, s_lines, s_font, w / 2, y + int(h * 0.012), hex_to_rgb(pal.subtitle or pal.accent))
+    a_font, a_lines = fit_text(book.metadata.author, find_font(book.cover.author_font, "script"), inner_w, int(h * 0.075), max_size=int(w * 0.085), min_size=int(w * 0.035), max_lines=1)
+    _draw_centered(d, a_lines, a_font, w / 2, max(y + int(h * 0.012), int(h * 0.895)), hex_to_rgb(pal.author or pal.title_text))
+    if book.cover.badge:
+        _draw_badge(d, book.cover.badge, (int(w * 0.85), int(h * 0.105)), int(w * 0.085), hex_to_rgb(pal.accent), hex_to_rgb(pal.title_text), find_font(None, "condensed"))
+    return img
+
+
+def _compose_front_band(book: Book, size: tuple[int, int], art: Image.Image) -> Image.Image:
+    """The older layout: art filling the cover under a colour band with the title and an author band at the foot."""
+    w, h = size
+    pal = effective_palette(book)
     accent = hex_to_rgb(pal.accent)
     title_rgb = hex_to_rgb(pal.title_text)
     bg = hex_to_rgb(pal.background)
@@ -131,6 +214,51 @@ def compose_front(book: Book, size: tuple[int, int], art: Image.Image) -> Image.
     return img
 
 
+def _compose_back_poster(book: Book, canvas: Image.Image, geo: CoverGeometry, pal: Palette) -> None:
+    """Back cover for the poster layout: title, blurb, a row of sample pages in white cards, bullets, barcode box."""
+    d = ImageDraw.Draw(canvas)
+    tx0, ty0, tx1, ty1 = geo.back.px()
+    inset = specs.px(0.55)
+    x0, x1 = tx0 + inset, tx1 - inset
+    y = ty0 + inset
+    display = find_font(book.cover.title_font, "display")
+    body = find_font(book.cover.body_font, "regular")
+    bold = find_font(None, "bold")
+    text_rgb = hex_to_rgb(pal.text)
+    head_font, head_lines = fit_text(book.metadata.title, display, x1 - x0, specs.px(1.2), max_size=specs.px(0.42), min_size=specs.px(0.18), max_lines=2)
+    y = draw_lines_centered(d, head_lines, head_font, (x0 + x1) / 2, y, hex_to_rgb(pal.title_text)) + specs.px(0.22)
+    blurb = book.cover.back_blurb or book.metadata.subtitle or ""
+    if blurb:
+        bf = load_font(body, specs.px(0.15))
+        y = draw_lines_left(d, wrap(blurb, bf, x1 - x0), bf, x0, y, text_rgb) + specs.px(0.28)
+    pages = interior_art_pages(book)
+    n = min(book.cover.sample_pages, len(pages))
+    if n:
+        chosen = [pages[round(k * (len(pages) - 1) / max(1, n - 1))] for k in range(n)] if n > 1 else pages[:1]
+        gap = specs.px(0.18)
+        card_w = (x1 - x0 - gap * (n - 1)) // n
+        card_h = int(card_w * 1.28)
+        pad = specs.px(0.07)
+        for k, p in enumerate(chosen):
+            cx0 = x0 + k * (card_w + gap)
+            d.rounded_rectangle((int(cx0), int(y), int(cx0 + card_w), int(y + card_h)), radius=specs.px(0.08), fill=hex_to_rgb(pal.card))
+            with Image.open(p) as im:
+                thumb = im.convert("RGB")
+                thumb.thumbnail((card_w - 2 * pad, card_h - 2 * pad), Image.LANCZOS)
+            canvas.paste(thumb, (int(cx0 + (card_w - thumb.width) // 2), int(y + (card_h - thumb.height) // 2)))
+        y += card_h + specs.px(0.28)
+    barcode_top = geo.barcode.px()[1] if book.cover.barcode_box else ty1 - inset
+    if book.cover.back_bullets:
+        bf = load_font(bold, specs.px(0.14))
+        for item in book.cover.back_bullets:
+            if y + line_height(bf) * 1.3 > barcode_top - specs.px(0.3):
+                break
+            d.ellipse((x0, y + line_height(bf) * 0.35, x0 + specs.px(0.1), y + line_height(bf) * 0.35 + specs.px(0.1)), fill=hex_to_rgb(pal.accent))
+            y = draw_lines_left(d, wrap(item, bf, x1 - x0 - specs.px(0.3)), bf, x0 + specs.px(0.3), y, text_rgb)
+    if book.cover.barcode_box:
+        d.rectangle(geo.barcode.px(), fill=(255, 255, 255))
+
+
 def _spine_text_image(text: str, font_path: Path, spine_px: int, length_px: int, fill, bg) -> Image.Image | None:
     inset = specs.px(specs.SPINE_TEXT_INSET_IN)
     max_h = spine_px - 2 * inset
@@ -156,7 +284,7 @@ def _spine_text_image(text: str, font_path: Path, spine_px: int, length_px: int,
 def render_cover(book: Book, pages: int, out_dir: Path | None = None) -> CoverResult:
     out_dir = ensure_dir(out_dir or book.build_dir)
     geo = cover_geometry(book.print_.trim, pages, book.print_.paper)
-    pal = book.cover.palette
+    pal = effective_palette(book)
     bg = hex_to_rgb(pal.background)
     accent = hex_to_rgb(pal.accent)
     text_rgb = hex_to_rgb(pal.text)
@@ -178,33 +306,36 @@ def render_cover(book: Book, pages: int, out_dir: Path | None = None) -> CoverRe
     d = ImageDraw.Draw(canvas)
     bx0, by0, bx1, by1 = geo.back_bleed.px()
     d.rectangle((bx0, by0, bx1, by1), fill=hex_to_rgb(pal.back) if pal.back else bg)
-    tb = geo.back  # trim box of the back cover
-    inset = specs.px(0.6)
-    tx0, ty0, tx1, ty1 = tb.px()
-    text_x0, text_x1 = tx0 + inset, tx1 - inset
-    y = ty0 + inset
-    head_font, head_lines = fit_text(book.metadata.title, display_font, text_x1 - text_x0, specs.px(1.6), max_size=specs.px(0.45), min_size=specs.px(0.2), max_lines=2)
-    y = draw_lines_centered(d, head_lines, head_font, (text_x0 + text_x1) / 2, y, accent) + specs.px(0.25)
-    barcode_top = geo.barcode.px()[1] if book.cover.barcode_box else ty1 - inset
-    blurb = book.cover.back_blurb or (book.metadata.subtitle or "")
-    if blurb:
-        bf = load_font(body_font, specs.px(0.16))
-        lines = wrap(blurb, bf, text_x1 - text_x0)
-        y = draw_lines_left(d, lines, bf, text_x0, y, text_rgb) + specs.px(0.2)
-    if book.cover.back_bullets:
-        bf = load_font(bold_font, specs.px(0.15))
-        for item in book.cover.back_bullets:
-            if y + line_height(bf) * 1.3 > barcode_top - specs.px(0.3):
-                break
-            lines = wrap(item, bf, text_x1 - text_x0 - specs.px(0.3))
-            d.ellipse((text_x0, y + line_height(bf) * 0.35, text_x0 + specs.px(0.1), y + line_height(bf) * 0.35 + specs.px(0.1)), fill=accent)
-            y = draw_lines_left(d, lines, bf, text_x0 + specs.px(0.3), y, text_rgb)
-    if book.cover.barcode_box:
-        d.rectangle(geo.barcode.px(), fill=(255, 255, 255))
+    if book.cover.layout == "poster":
+        _compose_back_poster(book, canvas, geo, pal)
+    else:
+        tb = geo.back  # trim box of the back cover
+        inset = specs.px(0.6)
+        tx0, ty0, tx1, ty1 = tb.px()
+        text_x0, text_x1 = tx0 + inset, tx1 - inset
+        y = ty0 + inset
+        head_font, head_lines = fit_text(book.metadata.title, display_font, text_x1 - text_x0, specs.px(1.6), max_size=specs.px(0.45), min_size=specs.px(0.2), max_lines=2)
+        y = draw_lines_centered(d, head_lines, head_font, (text_x0 + text_x1) / 2, y, accent) + specs.px(0.25)
+        barcode_top = geo.barcode.px()[1] if book.cover.barcode_box else ty1 - inset
+        blurb = book.cover.back_blurb or (book.metadata.subtitle or "")
+        if blurb:
+            bf = load_font(body_font, specs.px(0.16))
+            lines = wrap(blurb, bf, text_x1 - text_x0)
+            y = draw_lines_left(d, lines, bf, text_x0, y, text_rgb) + specs.px(0.2)
+        if book.cover.back_bullets:
+            bf = load_font(bold_font, specs.px(0.15))
+            for item in book.cover.back_bullets:
+                if y + line_height(bf) * 1.3 > barcode_top - specs.px(0.3):
+                    break
+                lines = wrap(item, bf, text_x1 - text_x0 - specs.px(0.3))
+                d.ellipse((text_x0, y + line_height(bf) * 0.35, text_x0 + specs.px(0.1), y + line_height(bf) * 0.35 + specs.px(0.1)), fill=accent)
+                y = draw_lines_left(d, lines, bf, text_x0 + specs.px(0.3), y, text_rgb)
+        if book.cover.barcode_box:
+            d.rectangle(geo.barcode.px(), fill=(255, 255, 255))
 
     # Spine
     sx0, sy0, sx1, sy1 = geo.spine.px()
-    spine_fill = hex_to_rgb(pal.spine) if pal.spine else accent
+    spine_fill = hex_to_rgb(pal.spine) if pal.spine else (bg if book.cover.layout == "poster" else accent)
     d.rectangle((sx0, 0, sx1, H), fill=spine_fill)
     want_spine_text = book.cover.spine_text if book.cover.spine_text is not None else True
     spine_text_drawn = False

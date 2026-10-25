@@ -106,13 +106,13 @@ interior:
     max_tiny_white: 0.25  # SD1.5 + LoRA vẽ chi tiết hơn FLUX; nới ngưỡng để giữ đủ 30 trang đã vẽ (mặc định 0.10)
 cover:
   art:
-    provider: placeholder
+    provider: colorize   # tô màu phẳng chính trang ruột số 2 (hoa hồng) làm tranh bìa; đổi sang local/auto để model vẽ tranh màu riêng
+    page: 2
     seed: 11
-  palette:
-    background: '#FBF3E4'
-    accent: '#C94C4C'
-    text: '#2B2B2B'
-    title_text: '#FFFFFF'
+    sticker: true
+  layout: poster
+  theme: midnight
+  badge: 30 designs
   back_blurb: 30 bold and easy flowers designs with thick, forgiving outlines and large shapes, each on its own page with
     a blank back.
   back_bullets:

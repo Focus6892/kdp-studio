@@ -121,6 +121,8 @@ def render_interior(book: Book, sequence: list[PageSpec], out_pdf: Path) -> Inte
     display_font = register_font(find_font(book.cover.title_font, "display"))
     body_font = register_font(find_font(book.cover.body_font, "regular"))
     bold_font = register_font(find_font(None, "bold"))
+    script_font = register_font(find_font(book.cover.author_font, "script"))
+    condensed_font = register_font(find_font(book.cover.subtitle_font, "condensed"))
 
     geo0 = page_geometry(trim, bleed, total, recto=True, art_margin_in=interior.cleanup.art_margin_in)
     # initialFontName replaces reportlab's default Helvetica (a non-embedded base-14 font
@@ -146,16 +148,23 @@ def render_interior(book: Book, sequence: list[PageSpec], out_pdf: Path) -> Inte
             entry["image"] = str(spec.image_path.name)
             entry["image_index"] = spec.image_index
         elif spec.kind == "title":
-            size = _fit_size(book.metadata.title, display_font, sw * 0.9, 64)
-            lines = _wrap(book.metadata.title, display_font, size, sw * 0.9)
-            y = sy + sh * 0.72 + (len(lines) - 1) * size * 0.6
-            y = _draw_block(c, lines, display_font, size, cx, y)
+            # a thin rounded frame, the title in the display face, the subtitle in condensed caps, the author in script
+            c.setLineWidth(2.0)
+            c.roundRect(sx + sw * 0.06, sy + sh * 0.08, sw * 0.88, sh * 0.84, 18, stroke=1, fill=0)
+            c.setLineWidth(0.8)
+            c.roundRect(sx + sw * 0.075, sy + sh * 0.095, sw * 0.85, sh * 0.81, 14, stroke=1, fill=0)
+            size = _fit_size(book.metadata.title, display_font, sw * 0.78, 72)
+            lines = _wrap(book.metadata.title, display_font, size, sw * 0.78)
+            y = sy + sh * 0.66 + (len(lines) - 1) * size * 0.55
+            y = _draw_block(c, lines, display_font, size, cx, y, leading=size * 1.0)
             if book.metadata.subtitle:
-                sub_size = 20
-                sub_lines = _wrap(book.metadata.subtitle, bold_font, sub_size, sw * 0.85)
-                y = _draw_block(c, sub_lines, bold_font, sub_size, cx, y - 18)
-            c.setFont(body_font, 18)
-            c.drawCentredString(cx, sy + sh * 0.25, book.metadata.author)
+                sub_size = _fit_size(book.metadata.subtitle.upper(), condensed_font, sw * 0.74, 26, 14)
+                sub_lines = _wrap(book.metadata.subtitle.upper(), condensed_font, sub_size, sw * 0.74)
+                y = _draw_block(c, sub_lines, condensed_font, sub_size, cx, y - 14)
+            c.setLineWidth(1.2)
+            c.line(cx - sw * 0.12, sy + sh * 0.31, cx + sw * 0.12, sy + sh * 0.31)
+            c.setFont(script_font, 26)
+            c.drawCentredString(cx, sy + sh * 0.24, book.metadata.author)
         elif spec.kind == "copyright":
             notice = interior.copyright_notice or (
                 "All rights reserved. No part of this publication may be reproduced, distributed, or "
@@ -167,10 +176,12 @@ def render_interior(book: Book, sequence: list[PageSpec], out_pdf: Path) -> Inte
             lines = _wrap(text, body_font, size, sw * 0.8)
             _draw_block(c, lines, body_font, size, cx, sy + sh * 0.28 + len(lines) * size * 1.3 / 2)
         elif spec.kind == "belongs_to":
-            c.setFont(display_font, 36)
-            c.drawCentredString(cx, sy + sh * 0.62, "This book belongs to")
+            c.setLineWidth(2.0)
+            c.roundRect(sx + sw * 0.12, sy + sh * 0.40, sw * 0.76, sh * 0.26, 16, stroke=1, fill=0)
+            c.setFont(display_font, 34)
+            c.drawCentredString(cx, sy + sh * 0.57, "This book belongs to")
             c.setLineWidth(1.5)
-            c.line(sx + sw * 0.2, sy + sh * 0.52, sx + sw * 0.8, sy + sh * 0.52)
+            c.line(sx + sw * 0.22, sy + sh * 0.47, sx + sw * 0.78, sy + sh * 0.47)
         elif spec.kind == "test_colors":
             c.setFont(display_font, 30)
             c.drawCentredString(cx, sy + sh * 0.9, "Test your colors")
@@ -207,5 +218,5 @@ def render_interior(book: Book, sequence: list[PageSpec], out_pdf: Path) -> Inte
         total_pages=total,
         image_pages=sum(1 for s in sequence if s.kind == "image"),
         page_map=page_map,
-        fonts=[display_font, body_font, bold_font],
+        fonts=[display_font, body_font, bold_font, script_font, condensed_font],
     )

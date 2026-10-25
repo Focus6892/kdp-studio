@@ -42,3 +42,4 @@ addopts = "-q"
 
 [tool.setuptools.package-data]
 "kdp_studio.ui" = ["templates/*.html"]
+"kdp_studio" = ["assets/fonts/*.ttf", "assets/fonts/LICENSE-*.txt"]

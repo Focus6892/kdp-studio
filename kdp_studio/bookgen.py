@@ -74,7 +74,8 @@ def new_coloring_book(root: Path, folder: str, title: str, author: str, theme: s
         source["path"] = "drawings"
     elif model:
         source["model"] = model
-    style = "coloring book page, bold clean black outlines, simple shapes, large areas to color, no shading, no gray, pure white background, no text, no watermark, centered composition"
+    style = ("coloring book page, one subject centered on a plain white background with generous empty space around it, bold clean black outlines of even thickness, "
+             "simple shapes, large areas to color, no shading, no gray, no hatching, no background scenery, no text, no watermark")
     if provider == "local" and (lora or DEFAULT_LORA) == DEFAULT_LORA:
         style = "ColoringBookAF, " + style
     doc = {
@@ -101,7 +102,7 @@ def new_coloring_book(root: Path, folder: str, title: str, author: str, theme: s
             "dedupe": {"enabled": True, "max_distance": 10, "library": "library/image_hashes.json"},
             "qa": {"heuristic": True, "claude": False, **({"max_tiny_white": 0.2} if provider == "local" else {})},  # SD1.5 + LoRA draws denser than FLUX
         },
-        "cover": {"art": {"provider": "placeholder", "seed": 11}, "palette": {"background": "#FBF3E4", "accent": "#C94C4C", "text": "#2B2B2B", "title_text": "#FFFFFF"},
+        "cover": {"art": {"provider": "colorize", "seed": 11, "sticker": True}, "layout": "poster", "theme": "midnight", "badge": f"{images} designs",
                   "back_blurb": f"{images} {theme} designs with thick, forgiving outlines and large shapes, each on its own page with a blank back.",
                   "back_bullets": [f"{images} single-sided pages", "Bold, easy lines", f"Large {trim.replace('x', ' x ')} inch format"], "barcode_box": True},
         "pricing": {"marketplace": "amazon.com", "list_price": price},

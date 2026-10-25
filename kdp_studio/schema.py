@@ -252,12 +252,24 @@ Interior = Annotated[Union[ColoringInterior, StoryInterior], Field(discriminator
 
 
 class ArtSource(BaseModel):
-    provider: Literal["placeholder", "file", "openai", "google", "stability", "pollinations", "cloudflare"] = "placeholder"
+    provider: Literal["placeholder", "file", "colorize", "local", "auto", "openai", "google", "stability", "pollinations", "cloudflare"] = "placeholder"
     path: str | None = None
     prompt: str | None = None
     model: str | None = None
     size: str = "1024x1536"
     seed: int = 11
+    # colorize: fill one of the book's own interior pages with flat colours (build/art/NNN.png); page = index, None = the first page
+    page: int | None = None
+    colors: list[str] | None = None  # palette for colorize; None = a bright floral/candy palette
+    sticker: bool = True  # cut the art out of its white background and add a white halo, like printed cover stickers
+    halo: str = "#FFFFFF"
+    chain: list[str] | None = None  # provider auto: members in order (see interior.source.chain)
+    # provider local: generation size on the GPU (cover art wants more pixels than a page) and an optional LoRA (usually none: the coloring-book LoRA is for line art)
+    local_size: str = "768x1152"
+    lora: str | None = None
+    lora_scale: float = Field(0.8, ge=0.0, le=2.0)
+    steps: int = Field(30, ge=4, le=80)
+    guidance: float = Field(7.5, ge=0.0, le=20.0)
 
     @model_validator(mode="after")
     def _file_needs_path(self) -> "ArtSource":
@@ -273,13 +285,23 @@ class Palette(BaseModel):
     title_text: str = "#FFFFFF"
     spine: str | None = None
     back: str | None = None
+    subtitle: str | None = None  # poster layout: subtitle colour (None = accent)
+    author: str | None = None  # poster layout: author line colour (None = title_text)
+    title_outline: str | None = None  # poster layout: outline drawn around the title letters (light themes need one)
+    card: str = "#FFFFFF"  # poster layout: background of the sample-page cards on the back
 
 
 class CoverSpec(BaseModel):
     art: ArtSource = Field(default_factory=ArtSource)
     palette: Palette = Field(default_factory=Palette)
-    title_font: str | None = None
+    layout: Literal["poster", "band"] = "poster"  # poster = art sticker over a plain background with a big title block (the Amazon best-seller look); band = the older colour-band layout
+    theme: Literal["midnight", "pastel", "cream", "custom"] = "midnight"  # palette preset; fields set in `palette` override it
+    title_font: str | None = None  # bundled short names work: anton, bebas, luckiest, pacifico, greatvibes, poppins-bold
+    subtitle_font: str | None = None
+    author_font: str | None = None
     body_font: str | None = None
+    badge: str | None = None  # small round badge on the front, e.g. "30 DESIGNS"
+    sample_pages: int = Field(3, ge=0, le=4)  # interior pages shown as thumbnails on the back cover (poster layout)
     spine_text: bool | None = None  # None = automatic (only when pages >= 79)
     back_blurb: str | None = None
     back_bullets: list[str] = Field(default_factory=list)

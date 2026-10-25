@@ -18,11 +18,27 @@ from pathlib import Path
 import reportlab
 
 REPORTLAB_FONT_DIR = Path(reportlab.__file__).parent / "fonts"
+ASSET_FONT_DIR = Path(__file__).parent / "assets" / "fonts"  # bundled, open-licensed (OFL / Apache; licenses sit next to the files)
+
+# short names usable in book.yaml (cover.title_font: anton) -> bundled file
+BUNDLED: dict[str, str] = {
+    "anton": "Anton-Regular.ttf",  # tall condensed display, like the big titles on best-selling coloring covers
+    "bebas": "BebasNeue-Regular.ttf",  # condensed caps for subtitles
+    "luckiest": "LuckiestGuy-Regular.ttf",  # rounded cartoon display for cute / kids books
+    "pacifico": "Pacifico-Regular.ttf",  # friendly script for the author line
+    "greatvibes": "GreatVibes-Regular.ttf",  # elegant script
+    "poppins": "Poppins-Regular.ttf",
+    "poppins-semibold": "Poppins-SemiBold.ttf",
+    "poppins-bold": "Poppins-Bold.ttf",
+}
 
 ROLE_PREFERENCES: dict[str, list[str]] = {
-    "display": ["impact.ttf", "GeorgiaPro-Black.ttf", "georgiab.ttf", "arialbd.ttf", "segoeuib.ttf", "DejaVuSans-Bold.ttf", "VeraBd.ttf"],
-    "bold": ["arialbd.ttf", "segoeuib.ttf", "calibrib.ttf", "DejaVuSans-Bold.ttf", "VeraBd.ttf"],
-    "regular": ["arial.ttf", "segoeui.ttf", "calibri.ttf", "DejaVuSans.ttf", "Vera.ttf"],
+    "display": ["Anton-Regular.ttf", "impact.ttf", "GeorgiaPro-Black.ttf", "georgiab.ttf", "arialbd.ttf", "segoeuib.ttf", "DejaVuSans-Bold.ttf", "VeraBd.ttf"],
+    "condensed": ["BebasNeue-Regular.ttf", "Anton-Regular.ttf", "impact.ttf", "arialbd.ttf", "VeraBd.ttf"],
+    "rounded": ["LuckiestGuy-Regular.ttf", "Anton-Regular.ttf", "arialbd.ttf", "VeraBd.ttf"],
+    "script": ["Pacifico-Regular.ttf", "GreatVibes-Regular.ttf", "segoesc.ttf", "ariali.ttf", "VeraIt.ttf"],
+    "bold": ["Poppins-Bold.ttf", "arialbd.ttf", "segoeuib.ttf", "calibrib.ttf", "DejaVuSans-Bold.ttf", "VeraBd.ttf"],
+    "regular": ["Poppins-Regular.ttf", "arial.ttf", "segoeui.ttf", "calibri.ttf", "DejaVuSans.ttf", "Vera.ttf"],
     "italic": ["ariali.ttf", "georgiai.ttf", "DejaVuSans-Oblique.ttf", "VeraIt.ttf"],
     # book-body serif family (print interiors)
     "serif": ["georgia.ttf", "GeorgiaPro-Regular.ttf", "times.ttf", "DejaVuSerif.ttf", "LiberationSerif-Regular.ttf", "Vera.ttf"],
@@ -31,7 +47,7 @@ ROLE_PREFERENCES: dict[str, list[str]] = {
     "serif_bolditalic": ["georgiaz.ttf", "GeorgiaPro-BoldItalic.ttf", "timesbi.ttf", "DejaVuSerif-BoldItalic.ttf", "LiberationSerif-BoldItalic.ttf", "VeraBI.ttf"],
 }
 FALLBACK_BY_ROLE = {
-    "display": "VeraBd.ttf", "bold": "VeraBd.ttf", "regular": "Vera.ttf", "italic": "VeraIt.ttf",
+    "display": "VeraBd.ttf", "condensed": "VeraBd.ttf", "rounded": "VeraBd.ttf", "script": "VeraIt.ttf", "bold": "VeraBd.ttf", "regular": "Vera.ttf", "italic": "VeraIt.ttf",
     "serif": "Vera.ttf", "serif_bold": "VeraBd.ttf", "serif_italic": "VeraIt.ttf", "serif_bolditalic": "VeraBI.ttf",
 }
 
@@ -46,7 +62,7 @@ FAMILY_SUFFIXES = [
 
 
 def font_dirs() -> list[Path]:
-    dirs = [Path.cwd() / "fonts"]
+    dirs = [ASSET_FONT_DIR, Path.cwd() / "fonts"]
     windir = os.environ.get("WINDIR")
     if windir:
         dirs.append(Path(windir) / "Fonts")
@@ -80,6 +96,9 @@ def _index() -> dict[str, Path]:
 def find_font(name_or_path: str | None = None, role: str = "regular") -> Path:
     """Return a TTF path. Never raises: falls back to a reportlab Vera font."""
     if name_or_path:
+        bundled = BUNDLED.get(name_or_path.strip().lower())
+        if bundled and (ASSET_FONT_DIR / bundled).is_file():
+            return ASSET_FONT_DIR / bundled
         p = Path(name_or_path)
         if p.is_file():
             return p
