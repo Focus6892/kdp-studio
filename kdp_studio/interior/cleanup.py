@@ -3,25 +3,32 @@
 Steps: grayscale -> autocontrast -> invert if the background is dark -> upscale the *grayscale* into the art box
 (Lanczos) -> light Gaussian smoothing -> threshold -> close hairline gaps -> drop specks (connected components below a
 few source pixels) -> hollow large solid regions (big connected cores only, so dots and small fills stay solid) ->
-thicken strokes to `min_line_px` (KDP minimum line weight is 0.75 pt = 3.1 px at 300 DPI) -> round off the corners.
+normalise the strokes (thin every stroke to its centreline, drop short isolated marks such as hatching, prune spurs,
+bridge open stroke ends so regions close, then redraw every line at one fixed weight) -> round off.
 
 Thresholding happens after the upscale on purpose: binarizing at the model's 512 px and scaling that up gave staircase
 edges, and a 3x3 median at 512 px erased every one-pixel line (broken strokes). Anti-aliased grayscale scales smoothly.
+The stroke normalisation is what makes a dense model drawing read like the "bold and easy" books on Amazon: one
+uniform outline weight (about 2 pt), no shading strokes, closed shapes with room to colour.
 """
 
 from __future__ import annotations
+
+import math
 
 import numpy as np
 from PIL import Image, ImageChops, ImageFilter, ImageOps
 
 from ..schema import CleanupOptions
 
-try:  # connected components for specks / cores / QA; scipy ships with the package but stays optional
+try:  # connected components / distance transforms for specks, cores, strokes and QA; scipy ships with the package
     from scipy import ndimage as _ndimage
 except ImportError:  # pragma: no cover - exercised only without scipy
     _ndimage = None
 
 EIGHT = np.ones((3, 3), dtype=bool)
+_K8 = np.ones((3, 3), dtype=np.int32)
+_K8[1, 1] = 0
 
 
 def _lut(threshold: int) -> list[int]:
@@ -175,6 +182,177 @@ def smooth_edges(b: Image.Image, radius: float) -> Image.Image:
     return b.filter(ImageFilter.GaussianBlur(radius)).point(_lut(128))
 
 
+# ---------------------------------------------------------------- stroke normalisation (skeleton -> uniform weight)
+def _zhang_suen_luts() -> tuple[np.ndarray, np.ndarray]:
+    """Deletion decision of the two Zhang-Suen sub-iterations for every 8-neighbourhood code (bit i = p(2+i), clockwise from north)."""
+    luts = []
+    for step in (0, 1):
+        lut = np.zeros(256, dtype=bool)
+        for code in range(256):
+            p = [(code >> i) & 1 for i in range(8)]
+            b = sum(p)
+            seq = p + [p[0]]
+            a = sum(1 for i in range(8) if seq[i] == 0 and seq[i + 1] == 1)
+            p2, _p3, p4, _p5, p6, _p7, p8, _p9 = p
+            cond = (p2 * p4 * p6 == 0 and p4 * p6 * p8 == 0) if step == 0 else (p2 * p4 * p8 == 0 and p2 * p6 * p8 == 0)
+            lut[code] = 2 <= b <= 6 and a == 1 and cond
+        luts.append(lut)
+    return luts[0], luts[1]
+
+
+_LUTS = _zhang_suen_luts()
+
+
+def _codes(img: np.ndarray) -> np.ndarray:
+    p = np.pad(img, 1)
+    return (p[:-2, 1:-1] | (p[:-2, 2:] << 1) | (p[1:-1, 2:] << 2) | (p[2:, 2:] << 3) | (p[2:, 1:-1] << 4) | (p[2:, :-2] << 5) | (p[1:-1, :-2] << 6) | (p[:-2, :-2] << 7))
+
+
+def thin(ink: np.ndarray, max_iter: int = 40) -> np.ndarray:
+    """Zhang-Suen thinning (vectorised, lookup-table) of a boolean ink mask to its one-pixel centreline."""
+    img = ink.astype(np.uint8)
+    for _ in range(max_iter):
+        changed = False
+        for lut in _LUTS:
+            m = lut[_codes(img)] & (img == 1)
+            if m.any():
+                img[m] = 0
+                changed = True
+        if not changed:
+            break
+    return img.astype(bool)
+
+
+def thin_fast(ink: np.ndarray) -> np.ndarray:
+    """Thinning for page-sized masks: run Zhang-Suen at half resolution (4x fewer pixels), lift the skeleton back up
+    and finish with a few full-resolution passes. The centreline lands within about half a pixel of the full-resolution
+    result on a 2000 px page (measured mean 0.56 px) in a quarter of the time."""
+    h, w = ink.shape
+    if min(h, w) < 1200 or _ndimage is None:
+        return thin(ink)
+    small = np.asarray(Image.fromarray(np.where(ink, 0, 255).astype(np.uint8), "L").resize((w // 2, h // 2), Image.BOX)) < 160  # biased to ink so 3 px lines survive
+    up = np.kron(thin(small), np.ones((2, 2), dtype=bool))[:h, :w]
+    inside = _ndimage.binary_dilation(ink, structure=EIGHT, iterations=2)
+    return thin(up & inside, max_iter=4)
+
+
+def _neighbours(sk: np.ndarray) -> np.ndarray:
+    return _ndimage.convolve(sk.astype(np.int32), _K8, mode="constant")
+
+
+def prune_spurs(sk: np.ndarray, length: int) -> np.ndarray:
+    """Remove skeleton branches shorter than `length` that hang off a junction (thinning artefacts along rough edges):
+    strip end pixels `length` times, then grow the surviving ends back along the original skeleton."""
+    if length < 1 or not sk.any():
+        return sk
+    cur = sk.copy()
+    for _ in range(length):
+        ends = cur & (_neighbours(cur) == 1)
+        if not ends.any():
+            break
+        cur &= ~ends
+    grow = cur & (_neighbours(cur) == 1)
+    for _ in range(length):
+        grow = _ndimage.binary_dilation(grow, structure=EIGHT) & sk & ~cur
+        if not grow.any():
+            break
+        cur |= grow
+    return cur
+
+
+def drop_short_strokes(sk: np.ndarray, min_px: int) -> np.ndarray:
+    """Remove isolated skeleton pieces shorter than `min_px` pixels: hatching, shading ticks, texture marks."""
+    if min_px <= 1:
+        return sk
+    lab = _label(sk)
+    if lab is None:  # pragma: no cover
+        return sk
+    labels, n = lab
+    if n == 0:
+        return sk
+    sizes = np.bincount(labels.ravel())
+    keep = sizes >= min_px
+    keep[0] = False
+    return keep[labels]
+
+
+def bridge_ends(sk: np.ndarray, max_gap: int, cone_deg: int = 35) -> tuple[np.ndarray, int, int]:
+    """Join open stroke ends: from each endpoint, look ahead along the stroke's own direction (within a cone) for
+    other ink up to `max_gap` pixels away and draw the connection. Returns (skeleton, endpoints before, joins)."""
+    if max_gap < 2 or not sk.any():
+        return sk, 0, 0
+    sk = sk.copy()
+    h, w = sk.shape
+    ends = np.argwhere(sk & (_neighbours(sk) == 1))
+    angles = np.deg2rad(np.arange(-cone_deg, cone_deg + 1, 5))
+    joined = 0
+    for y, x in ends:
+        path = [(int(y), int(x))]
+        prev, cur = None, (int(y), int(x))
+        for _ in range(10):  # walk back along the branch to get its direction
+            cy, cx = cur
+            nxt = None
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    if (dy or dx) and 0 <= cy + dy < h and 0 <= cx + dx < w and sk[cy + dy, cx + dx]:
+                        cand = (cy + dy, cx + dx)
+                        if cand != prev and cand not in path:
+                            nxt = cand
+                            break
+                if nxt:
+                    break
+            if not nxt:
+                break
+            prev, cur = cur, nxt
+            path.append(cur)
+        if len(path) < 4:
+            continue
+        base = math.atan2(y - path[-1][0], x - path[-1][1])
+        own = set(path)
+        hit = None
+        for r in range(3, max_gap + 1):
+            for a in angles:
+                ny, nx = int(round(y + r * math.sin(base + a))), int(round(x + r * math.cos(base + a)))
+                if 0 <= ny < h and 0 <= nx < w and sk[ny, nx] and (ny, nx) not in own:
+                    hit = (ny, nx)
+                    break
+            if hit:
+                break
+        if hit:
+            steps = max_gap * 2
+            rr = np.round(np.linspace(y, hit[0], steps)).astype(int)
+            cc = np.round(np.linspace(x, hit[1], steps)).astype(int)
+            sk[rr, cc] = True
+            joined += 1
+    return sk, int(len(ends)), joined
+
+
+def normalize_strokes(b: Image.Image, width_px: int, bridge_px: int, min_stroke_px: int, spur_px: int, keep_dots_area: int) -> Image.Image:
+    """Redraw the line art at one stroke weight: centreline (thinning) -> drop short isolated marks -> prune spurs ->
+    bridge open ends -> dilate to `width_px`. Small solid features thicker than a stroke (flower centres, eyes) that were
+    not hollowed are kept as drawn when their area is under `keep_dots_area`."""
+    if _ndimage is None or width_px < 1:  # pragma: no cover
+        return b
+    ink = np.asarray(b) < 128
+    if not ink.any():
+        return b
+    sk = thin_fast(ink)
+    sk = drop_short_strokes(sk, min_stroke_px)
+    sk = prune_spurs(sk, spur_px)
+    sk, _ends, _joined = bridge_ends(sk, bridge_px)
+    out = _ndimage.distance_transform_edt(~sk) <= width_px / 2
+    thick = _ndimage.distance_transform_edt(ink) > width_px * 0.75
+    if thick.any():
+        labels, n = _ndimage.label(ink, structure=EIGHT)
+        ids = np.unique(labels[thick])
+        ids = ids[ids > 0]
+        areas = np.bincount(labels.ravel())
+        small = [i for i in ids if areas[i] < keep_dots_area]
+        if small:
+            out |= np.isin(labels, small)
+    return Image.fromarray(np.where(out, 0, 255).astype(np.uint8), "L")
+
+
 def prepare_art(src: Image.Image, box_px: tuple[int, int], opts: CleanupOptions) -> Image.Image:
     g = to_grayscale(src, opts)
     scale = min(box_px[0] / g.width, box_px[1] / g.height)
@@ -186,9 +364,13 @@ def prepare_art(src: Image.Image, box_px: tuple[int, int], opts: CleanupOptions)
         b = close_gaps(b, max(1, round(0.75 * scale)))  # breaks up to about 1.5 source pixels wide (a one-pixel gap widens a little in the blur)
     if opts.despeckle > 0:
         b = remove_specks(b, round((3 * opts.despeckle * max(scale, 1.0)) ** 2))  # blobs under ~3 source px per despeckle step
+    width_px = max(opts.min_line_px, round(opts.line_weight_frac * box_px[0])) if opts.line_weight_frac > 0 else 0
     if opts.hollow_fills:
-        border = max(opts.min_line_px, round(box_px[0] * opts.hollow_border_frac))
+        border = width_px or max(opts.min_line_px, round(box_px[0] * opts.hollow_border_frac))
         b = hollow_fills(b, border, min_core_area=(border * opts.hollow_min_core) ** 2)
+    if width_px:
+        b = normalize_strokes(b, width_px, bridge_px=round(opts.bridge_frac * box_px[0]), min_stroke_px=round(opts.min_stroke_frac * box_px[0]),
+                              spur_px=max(2, round(0.5 * width_px)), keep_dots_area=(width_px * 12) ** 2)
     b = thicken(b, opts.min_line_px)
     b = smooth_edges(b, max(1.0, 0.35 * scale))  # rounds the remaining one-source-pixel steps without thinning 3 px lines
     return close_gaps(b, 1) if opts.close_gaps else b  # the smoothing can nick a freshly bridged joint by a pixel: seal it again

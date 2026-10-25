@@ -113,7 +113,7 @@ def build_coloring_interior(book: Book, image_limit: int | None = None, reuse_ra
                 qa_log.append({"attempt": attempt, **h.as_dict()})
                 reasons.extend(h.reasons)
 
-            if interior.qa.reject_people and not reasons and provider.name in API_PROVIDERS:
+            if (interior.qa.reject_people or interior.qa.reject_text) and not reasons and provider.name in API_PROVIDERS:
                 cq = content_qa(raw_path, interior.qa)  # the colour original tells people/nudity apart far better than the thresholded art
                 if cq is not None:
                     qa_log.append({"attempt": attempt, **cq.as_dict()})

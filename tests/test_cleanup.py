@@ -30,7 +30,9 @@ def test_prepare_art_bridges_gaps_drops_specks_and_hollows_only_big_fills():
     cols = a[int(90 * S):int(110 * S), int(60 * S):int(440 * S)].any(axis=0)
     assert cols.all(), "the hairline must be continuous after cleanup"
     assert not a[int(20 * S):int(40 * S), int(20 * S):int(40 * S)].any(), "a one-pixel speck must disappear"
-    assert not a[int(680 * S), int(200 * S)] and a[int(603 * S), int(200 * S)], "the big block becomes a ring: white centre, ink border"
+    assert not a[int(680 * S), int(200 * S)] and a[int(601 * S), int(200 * S)], "the big block becomes a ring: white centre, ink border"
+    widths = [int((a[y, int(140 * S):int(160 * S)]).sum()) for y in range(int(396 * S), int(404 * S), 4)]  # the circle's left edge, crossed horizontally: one weight
+    assert all(5 <= w_ <= 13 for w_ in widths), widths  # normalised to about 8 px (line_weight_frac 0.004 of 2000)
     assert a[int(608 * S), int(408 * S)], "a small dot stays solid instead of turning into a tiny ring"
     assert estimate_stroke_px(art) >= 3
 

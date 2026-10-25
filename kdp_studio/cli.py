@@ -142,7 +142,7 @@ def cmd_image_test(args) -> int:
         clean = out / f"{p.index:02d}_clean.png"
         art.save(clean)
         qa = heuristic_qa(art, interior.qa)
-        if qa.ok and interior.qa.reject_people and provider.name in API_PROVIDERS:  # same people/nudity screen as a real build
+        if qa.ok and (interior.qa.reject_people or interior.qa.reject_text) and provider.name in API_PROVIDERS:  # same people/nudity/text screen as a real build
             cq = content_qa(raw, interior.qa)
             if cq is not None and not cq.ok:
                 qa = cq

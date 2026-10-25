@@ -182,6 +182,9 @@ def claude_qa(art: Image.Image, opts: QAOptions, audience: str) -> QAResult | No
 # over PEOPLE_QUERIES was >= 0.33 on every page with a person and <= 0.21 on every page without.
 PEOPLE_QUERIES = ["a portrait of a woman with flowers in her hair", "a human face", "a girl", "a human figure"]
 NUDITY_QUERIES = ["a naked body"]
+# Fake signatures / pseudo-text ("Cdoorine Llloddna") appear near the bottom of 4 of 30 SD1.5 pages. OWLv2 scores them
+# highest under "a watermark" (0.39-0.61); plain "text"/"letters" queries score ~0 on this kind of writing.
+TEXT_QUERIES = ["a watermark", "a signature"]
 _detector = {}
 
 
@@ -189,11 +192,14 @@ def decide_content(scores: dict[str, float], opts: QAOptions) -> list[str]:
     """Pure decision on per-query max detection scores, testable without the model."""
     people = max((scores.get(k, 0.0) for k in PEOPLE_QUERIES), default=0.0)
     nude = max((scores.get(k, 0.0) for k in NUDITY_QUERIES), default=0.0)
+    text = max((scores.get(k, 0.0) for k in TEXT_QUERIES), default=0.0)
     reasons = []
     if nude >= 0.10:
         reasons.append(f"possible nudity (score {nude:.2f})")
-    if people >= opts.people_threshold:
+    if opts.reject_people and people >= opts.people_threshold:
         reasons.append(f"contains a person (score {people:.2f} >= {opts.people_threshold})")
+    if opts.reject_text and text >= opts.text_threshold:
+        reasons.append(f"contains text or a signature (score {text:.2f} >= {opts.text_threshold})")
     return reasons
 
 
@@ -207,7 +213,7 @@ def _load_detector(model_name: str, device: str):
 
 
 def content_qa(image: "Image.Image | Path", opts: QAOptions) -> QAResult | None:
-    """Reject pages showing people or nudity, judged on the colour original. Returns None when the model stack
+    """Reject pages showing people, nudity or written text, judged on the colour original. Returns None when the model stack
     is unavailable or KDP_STUDIO_SKIP_CONTENT_QA=1 (tests), so a build never stalls on it. Runs on the CPU by
     default (about 5-10 s per page) so it never competes with the image model for a small GPU's memory."""
     if os.environ.get("KDP_STUDIO_SKIP_CONTENT_QA") == "1":
@@ -219,7 +225,7 @@ def content_qa(image: "Image.Image | Path", opts: QAOptions) -> QAResult | None:
     except Exception as exc:  # noqa: BLE001 - torch/transformers/scipy missing or download failed
         log.warning("content filter unavailable (%s); pages are not screened for people", str(exc).splitlines()[0][:120])
         return None
-    queries = PEOPLE_QUERIES + NUDITY_QUERIES
+    queries = PEOPLE_QUERIES + NUDITY_QUERIES + TEXT_QUERIES
     img = Image.open(image).convert("RGB") if isinstance(image, (str, Path)) else image.convert("RGB")
     with torch.no_grad():
         inputs = processor(text=[queries], images=img, return_tensors="pt").to(opts.content_device)

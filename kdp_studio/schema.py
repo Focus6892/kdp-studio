@@ -120,6 +120,10 @@ class CleanupOptions(BaseModel):
     hollow_fills: bool = True  # large solid black regions become outlines (colorable) instead of failing QA
     hollow_border_frac: float = Field(0.006, ge=0.001, le=0.03)  # border kept around hollowed regions, as a fraction of the art width
     hollow_min_core: int = Field(6, ge=1, le=30)  # only solid cores at least (border * this)^2 px are hollowed; smaller fills and dots stay solid
+    # stroke normalisation: every line is redrawn at one weight, like the bold-and-easy books (0 = keep the model's own line widths)
+    line_weight_frac: float = Field(0.0045, ge=0.0, le=0.02)  # stroke width as a fraction of the art width: 0.0045 = 9 px on a 2000 px box = about 2.4 pt, the bold-and-easy range (2-4 pt)
+    bridge_frac: float = Field(0.015, ge=0.0, le=0.05)  # open stroke ends are joined to ink found ahead within this fraction of the art width
+    min_stroke_frac: float = Field(0.02, ge=0.0, le=0.2)  # isolated strokes shorter than this fraction of the art width are dropped (hatching, ticks)
 
 
 class DedupeOptions(BaseModel):
@@ -143,6 +147,8 @@ class QAOptions(BaseModel):
     max_tiny_white: float = Field(0.10, ge=0.0, le=1.0)  # share of the page in enclosed white cells under 0.1% of the page (~1 cm): fine texture is not bold-and-easy
     reject_people: bool = True  # free local OWLv2 detector: people and nudity (model-generated pages only)
     people_threshold: float = Field(0.27, ge=0.05, le=0.95)  # calibrated: people >= 0.33, flowers-only <= 0.21
+    reject_text: bool = True  # the same detector flags pseudo-text / fake signatures the models like to write near the page edge
+    text_threshold: float = Field(0.25, ge=0.05, le=0.95)  # calibrated 2026-10-25: 4 pages with fake signatures scored 0.39-0.61, 26 clean pages <= 0.10
     content_model: str = "google/owlv2-base-patch16-ensemble"
     content_device: Literal["cpu", "cuda"] = "cpu"  # cpu keeps a 4 GB GPU free for Stable Diffusion  # share of the page that is solid black after erosion (flower centres etc. are fine)
     max_retries: int = Field(2, ge=0, le=5)
