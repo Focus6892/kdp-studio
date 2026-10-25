@@ -95,6 +95,7 @@ def discover_books(dirs: list[Path]) -> list[dict]:
                 entry.update(
                     id=book.id, title=book.metadata.full_title, type=book.type, formats=list(book.formats),
                     interior=(build / "interior.pdf").is_file(), cover=(build / "cover_wrap.pdf").is_file(), ebook=any(build.glob("*.epub")),
+                    cover_jpg=str(build / "cover_ebook.jpg") if (build / "cover_ebook.jpg").is_file() else None,
                     preflight=status, provider=getattr(book.interior, "source", None) and book.interior.source.provider if isinstance(book.interior, ColoringInterior) else "story",
                     images=book.interior.images if isinstance(book.interior, ColoringInterior) else None,
                     drawings=len(list((book.book_dir / "drawings").glob("*.json"))) if (book.book_dir / "drawings").is_dir() else 0,
@@ -188,7 +189,17 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
 
     @app.context_processor
     def inject() -> dict:
-        return {"now": dt.datetime.now().strftime("%Y-%m-%d %H:%M"), "license": _license_status()}
+        """Sidebar and top bar: clock, license, running jobs, this week's KDP quota and how many keys are set."""
+        try:
+            s = store()
+            try:
+                nav_quota = quota_status(s)
+            finally:
+                s.close()
+        except Exception:  # noqa: BLE001 - the shell must render even if the store is unavailable
+            nav_quota = {}
+        return {"now": dt.datetime.now().strftime("%Y-%m-%d %H:%M"), "license": _license_status(), "running_jobs": sum(1 for j in jobs.all() if j["status"] == "running"),
+                "nav_quota": nav_quota, "keys_present": key_status()}
 
     @app.get("/")
     def index():

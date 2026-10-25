@@ -1,11 +1,11 @@
-{% extends "base.html" %}{% block title %}Lần chạy · kdp-studio{% endblock %}
+{% extends "base.html" %}{% from "_icons.html" import icon %}{% block title %}Lần chạy · kdp-studio{% endblock %}
 {% block body %}
-<h1>Các lần chạy publish</h1>
+<div class="page-head"><div><h1>Các lần chạy publish</h1><p class="sub">Mỗi lần chạy giữ ảnh chụp từng tab KDP, checklist nhập tay và flow.json để rà lại.</p></div></div>
 {% for r in rows %}
-<div class="card" id="{{ r.name }}"><h2>{{ r.name }} · {% if r.status in ['draft', 'submitted'] %}<span class="ok">{{ r.status }}</span>{% elif r.status in ['blocked', 'error'] %}<span class="bad">{{ r.status }}</span>{% else %}<span class="warn">{{ r.status }}</span>{% endif %}</h2>
+<div class="card" id="{{ r.name }}"><h2>{{ icon('history') }} {{ r.name }} {% if r.status in ['draft', 'submitted'] %}<span class="chip ok">{{ r.status }}</span>{% elif r.status in ['blocked', 'error'] %}<span class="chip bad">{{ r.status }}</span>{% else %}<span class="chip warn">{{ r.status }}</span>{% endif %}</h2>
 <p class="muted">điền {{ r.filled }} field · nhập tay {{ r.unfilled }}{% if r.notes %} · {{ r.notes|join(' / ') }}{% endif %}</p>
 <div class="shots">{% for s in r.shots %}<a href="{{ url_for('run_file', name=r.name, fname='screenshots/' ~ s) }}" target="_blank"><img src="{{ url_for('run_file', name=r.name, fname='screenshots/' ~ s) }}" alt="{{ s }}" title="{{ s }}"></a>{% endfor %}</div>
-<p class="muted"><a href="{{ url_for('run_file', name=r.name, fname='checklist.md') }}">checklist.md</a>{% if r.status != '-' %} · <a href="{{ url_for('run_file', name=r.name, fname='flow.json') }}">flow.json</a>{% endif %}</p>
+<p><a class="btn small secondary" href="{{ url_for('run_file', name=r.name, fname='checklist.md') }}">{{ icon('file', 13) }} checklist.md</a>{% if r.status != '-' %} <a class="btn small secondary" href="{{ url_for('run_file', name=r.name, fname='flow.json') }}">{{ icon('file', 13) }} flow.json</a>{% endif %}</p>
 </div>
-{% else %}<div class="card"><p class="muted">Chưa có lần chạy nào.</p></div>{% endfor %}
+{% else %}<div class="card"><p class="muted">Chưa có lần chạy nào. Đưa sách vào <a href="{{ url_for('queue') }}">hàng đợi</a> hoặc bấm "Mở cửa sổ publish run" trên trang sách.</p></div>{% endfor %}
 {% endblock %}

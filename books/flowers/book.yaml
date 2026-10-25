@@ -47,7 +47,7 @@ interior:
   back_matter:
   - thank_you
   - blank
-  style_prompt: ColoringBookAF, coloring book page, bold clean black outlines, simple shapes, large areas to color, no shading,
+  style_prompt: ColoringBookAF, coloring book page, one single subject centered on a plain white background with generous empty space around it, bold clean black outlines of even thickness, simple shapes, large areas to color, no shading, no gray, no hatching, no background scenery, no text, no watermark
     no gray, pure white background, no text, no watermark, centered composition
   negative_prompt: color, shading, gradients, gray fill, text, letters, numbers, watermark, signature, blurry, photo, person,
     woman, man, face, portrait, child, tiny details, cross-hatching

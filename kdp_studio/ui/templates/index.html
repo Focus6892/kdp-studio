@@ -1,46 +1,55 @@
-{% extends "base.html" %}{% block title %}Sách · kdp-studio{% endblock %}
+{% extends "base.html" %}{% from "_icons.html" import icon %}{% block title %}Sách · kdp-studio{% endblock %}
 {% block body %}
-<h1>Sách trong dự án</h1>
+<div class="page-head"><div><h1>Sách trong dự án</h1><p class="sub">{{ books|length }} cuốn trong {{ dirs|length }} thư mục. Luồng làm việc: tạo sách → build → đưa vào hàng đợi → đăng lên KDP với cổng duyệt.</p></div>
+<div class="actions"><a class="btn secondary" href="#dirs">{{ icon('folder') }} Nạp thư mục</a><a class="btn" href="{{ url_for('create_form') }}">{{ icon('plus') }} Tạo sách mới</a></div></div>
+
+<div class="card"><h2>{{ icon('arrow') }} Bắt đầu nhanh</h2>
+<div class="steps">
+<div class="step {{ 'done' if (keys_present.values()|select|list) else '' }}"><span class="n">1</span><b>Key</b><div class="muted">Thêm key ở <a href="{{ url_for('settings') }}">Cài đặt</a>, hoặc dùng GPU/bản vẽ vector không cần key.</div></div>
+<div class="step {{ 'done' if books else '' }}"><span class="n">2</span><b>Tạo sách</b><div class="muted">Gõ vài ô, bấm <i>Gợi ý</i>, tool điền phần còn lại.</div></div>
+<div class="step"><span class="n">3</span><b>Build</b><div class="muted">Ruột, bìa và preflight; tiến trình hiện theo trang.</div></div>
+<div class="step"><span class="n">4</span><b>Đăng</b><div class="muted">Hàng đợi mở Edge, tool điền, bạn bấm Publish.</div></div>
+</div></div>
+
 <div class="card">
-<table><tr><th>#</th><th>Tên</th><th>Loại</th><th>Định dạng</th><th>Ảnh</th><th>Build</th><th>Preflight</th><th>KDP</th><th></th></tr>
+<table><tr><th></th><th>Tên</th><th>Loại</th><th>Ảnh</th><th>Trạng thái</th><th>KDP</th><th></th></tr>
 {% for b in books %}
 <tr>
-<td>{{ loop.index0 }}</td>
-<td>{% if b.error %}<span class="bad">{{ b.folder }}</span><div class="muted">{{ b.error }}</div>{% else %}<a href="{{ url_for('book', idx=loop.index0) }}"><b>{{ b.title }}</b></a><div class="muted">{{ b.id }} · {{ b.folder }}</div>{% endif %}</td>
+<td>{% if b.cover_jpg %}<a href="{{ url_for('book', idx=loop.index0) }}"><img class="thumb" src="{{ url_for('file_view', p=b.cover_jpg) }}" alt=""></a>{% else %}<div class="thumb empty">{{ icon('image', 18) }}</div>{% endif %}</td>
+<td>{% if b.error %}<span class="bad">{{ b.folder }}</span><div class="muted">{{ b.error }}</div>{% else %}<a href="{{ url_for('book', idx=loop.index0) }}"><b>{{ b.title }}</b></a><div class="muted">{{ b.id }} · {{ b.folder }} {% for f in b.formats or [] %}<span class="pill">{{ f }}</span>{% endfor %}</div>{% endif %}</td>
 <td>{{ b.type }}</td>
-<td>{% for f in b.formats or [] %}<span class="pill">{{ f }}</span>{% endfor %}</td>
-<td>{% if b.type == 'coloring' %}{{ b.provider }}{% if b.drawings %} · {{ b.drawings }} bản vẽ{% endif %} · {{ b.images }} trang{% else %}truyện{% endif %}</td>
-<td>{% if b.interior %}<span class="ok">ruột</span>{% else %}<span class="muted">ruột</span>{% endif %} {% if b.cover %}<span class="ok">bìa</span>{% else %}<span class="muted">bìa</span>{% endif %} {% if b.ebook %}<span class="ok">epub</span>{% endif %}</td>
-<td>{% if b.preflight == 'PASS' %}<span class="ok">PASS</span>{% elif b.preflight %}<span class="bad">{{ b.preflight }}</span>{% else %}<span class="muted">chưa</span>{% endif %}</td>
+<td class="muted">{% if b.type == 'coloring' %}{{ b.provider }}{% if b.drawings %} · {{ b.drawings }} bản vẽ{% endif %} · {{ b.images }} trang{% else %}truyện{% endif %}</td>
+<td><span class="chip {{ 'ok' if b.interior else '' }}">{{ icon('check' if b.interior else 'clock', 12) }} ruột</span><span class="chip {{ 'ok' if b.cover else '' }}">{{ icon('check' if b.cover else 'clock', 12) }} bìa</span>{% if b.ebook %}<span class="chip ok">epub</span>{% endif %}
+{% if b.preflight == 'PASS' %}<span class="chip ok">{{ icon('shield', 12) }} PASS</span>{% elif b.preflight %}<span class="chip bad">{{ b.preflight }}</span>{% endif %}</td>
 <td>{% for f in b.formats or [] %}{% set t = titles.get((b.id, f)) %}{% if t %}<div>{{ f }}: <b>{{ t.status }}</b>{% if t.asin %} {{ t.asin }}{% endif %}</div>{% endif %}{% endfor %}</td>
-<td style="white-space:nowrap">{% if not b.error %}<a class="btn small secondary" href="{{ url_for('book', idx=loop.index0) }}" style="padding:4px 8px;font-size:13px">Mở</a> <form class="inline" method="post" action="{{ url_for('open_folder', idx=loop.index0) }}"><button class="small secondary" title="{{ b.path }}">Thư mục</button></form> <form class="inline" method="post" action="{{ url_for('build', idx=loop.index0) }}"><button class="small">Build</button></form>{% endif %}</td>
+<td style="white-space:nowrap">{% if not b.error %}<a class="btn small secondary" href="{{ url_for('book', idx=loop.index0) }}">{{ icon('eye', 14) }} Mở</a> <form class="inline" method="post" action="{{ url_for('open_folder', idx=loop.index0) }}"><button class="small secondary" title="{{ b.path }}">{{ icon('folder', 14) }} Thư mục</button></form> <form class="inline" method="post" action="{{ url_for('build', idx=loop.index0) }}"><button class="small">{{ icon('zap', 14) }} Build</button></form>{% endif %}</td>
 </tr>
-{% endfor %}
+{% else %}<tr><td colspan="7" class="muted">Chưa có sách nào. <a href="{{ url_for('create_form') }}">Tạo sách mới</a> hoặc nạp thư mục bên dưới.</td></tr>{% endfor %}
 </table>
 </div>
-<div class="card" id="dirs"><h2>Thư mục sách</h2>
-{% if message %}<p><b>{{ message }}</b></p>{% endif %}
+
+<div class="card" id="dirs"><h2>{{ icon('folder') }} Thư mục sách</h2>
 <table><tr><th>Thư mục</th><th>Số sách</th><th></th></tr>
 {% for d in dirs %}<tr><td><code>{{ d }}</code></td><td>{{ dir_counts.get(d|string, 0) }}</td>
-<td>{% if d|string in extra_dirs %}<form class="inline" method="post" action="{{ url_for('remove_dir') }}"><input type="hidden" name="path" value="{{ d }}"><button class="small secondary">Bỏ khỏi danh sách</button></form>{% else %}<span class="muted">mặc định</span>{% endif %}</td></tr>{% endfor %}
+<td>{% if d|string in extra_dirs %}<form class="inline" method="post" action="{{ url_for('remove_dir') }}"><input type="hidden" name="path" value="{{ d }}"><button class="small danger">{{ icon('x', 13) }} Bỏ khỏi danh sách</button></form>{% else %}<span class="muted">mặc định</span>{% endif %}</td></tr>{% endfor %}
 </table>
-<form method="post" action="{{ url_for('add_dir') }}" style="margin-top:10px">
-<label>Nạp sách có sẵn từ thư mục bất kỳ (chứa <code>book.yaml</code>, hoặc thư mục cha chứa nhiều sách)<br>
-<input type="text" name="path" placeholder="D:\sach-cua-toi  hoặc  D:\sach-cua-toi\ocean-animals" style="width:min(520px,95%)"></label>
-<button class="small">Thêm thư mục</button>
-<button class="small secondary" formaction="{{ url_for('pick_dir') }}">Chọn thư mục…</button>
+<form method="post" action="{{ url_for('add_dir') }}" style="margin-top:12px" class="row">
+<input type="text" name="path" placeholder="D:\sach-cua-toi  hoặc  D:\sach-cua-toi\ocean-animals" style="flex:1;min-width:260px">
+<button class="small">{{ icon('plus', 14) }} Thêm thư mục</button>
+<button class="small secondary" formaction="{{ url_for('pick_dir') }}">{{ icon('folder', 14) }} Chọn thư mục…</button>
 </form>
-<p class="muted">Thư mục đã thêm được nhớ trong <code>state/book_dirs.json</code> nên lần mở sau vẫn còn; sách trong đó dùng được mọi chức năng (Build, Gợi ý, Hàng đợi, publish) như sách trong dự án. Dòng lệnh tương đương: <code>kdp ui --books D:\path</code>.</p>
+<p class="muted">Nạp sách có sẵn từ thư mục bất kỳ (chứa <code>book.yaml</code>, hoặc thư mục cha chứa nhiều sách). Thư mục đã thêm được nhớ trong <code>state/book_dirs.json</code>; sách trong đó dùng được mọi chức năng. Dòng lệnh: <code>kdp ui --books D:\path</code>.</p>
 </div>
+
 <div class="grid">
-<div class="card"><h2>Quota KDP tuần này</h2>
+<div class="card"><h2>{{ icon('upload') }} Quota KDP tuần này</h2>
 <table><tr><th>Định dạng</th><th>Đã tạo</th><th>Đã nộp</th><th>Còn</th></tr>
 {% for f, q in quota.items() %}<tr><td>{{ f }}</td><td>{{ q.created }}/{{ q.limit }}</td><td>{{ q.submitted }}/{{ q.limit }}</td><td>{% if q.can_start %}<span class="ok">{{ q.remaining_created }} tạo / {{ q.remaining_submitted }} nộp</span>{% else %}<span class="bad">hết{% if q.kdp_blocked %} (KDP báo){% endif %}</span>{% endif %}</td></tr>{% endfor %}
 </table><p class="muted">Reset Chủ nhật 00:00 UTC (07:00 giờ Việt Nam). {{ queued }} tựa đang chờ trong <a href="{{ url_for('queue') }}">hàng đợi</a>.</p></div>
-<div class="card"><h2>API key (chỉ hiện có/không)</h2>
-<table>{% for name, present in keys.items() %}<tr><td>{{ name }}</td><td>{% if present %}<span class="ok">có</span>{% else %}<span class="muted">không</span>{% endif %}</td></tr>{% endfor %}</table>
-<p class="muted">Đặt key trong <code>.env</code> của dự án (xem <code>.env.example</code>). Provider <b>spec</b> và <b>local</b> không cần key.</p></div>
-<div class="card"><h2>Việc đang chạy</h2>
-{% if jobs %}<table>{% for j in jobs %}<tr><td><a href="{{ url_for('job', job_id=j.id) }}">{{ j.title }}</a></td><td>{{ j.started }}</td><td>{% if j.status == 'running' %}<span class="warn">đang chạy</span>{% elif j.status == 'done' %}<span class="ok">xong</span>{% else %}<span class="bad">lỗi</span>{% endif %}</td></tr>{% endfor %}</table>{% else %}<p class="muted">Chưa có.</p>{% endif %}</div>
+<div class="card"><h2>{{ icon('key') }} API key (chỉ hiện có/không)</h2>
+<table>{% for name, present in keys.items() %}<tr><td>{{ name }}</td><td>{% if present %}<span class="chip ok">{{ icon('check', 12) }} có</span>{% else %}<span class="chip">không</span>{% endif %}</td></tr>{% endfor %}</table>
+<p class="muted">Thêm và kiểm tra key ở <a href="{{ url_for('settings') }}">Cài đặt</a>. Nguồn <b>spec</b> và <b>local</b> không cần key.</p></div>
+<div class="card" id="jobs"><h2>{{ icon('loader') }} Việc đang chạy</h2>
+{% if jobs %}<table>{% for j in jobs %}<tr><td><a href="{{ url_for('job', job_id=j.id) }}">{{ j.title }}</a></td><td class="muted">{{ j.started }}</td><td>{% if j.status == 'running' %}<span class="chip warn">đang chạy</span>{% elif j.status == 'done' %}<span class="chip ok">xong</span>{% else %}<span class="chip bad">lỗi</span>{% endif %}</td></tr>{% endfor %}</table>{% else %}<p class="muted">Chưa có.</p>{% endif %}</div>
 </div>
 {% endblock %}

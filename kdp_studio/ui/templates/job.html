@@ -1,15 +1,18 @@
-{% extends "base.html" %}{% block title %}{{ job.title }} · kdp-studio{% endblock %}
+{% extends "base.html" %}{% from "_icons.html" import icon %}{% block title %}{{ job.title }} · kdp-studio{% endblock %}
 {% block body %}
-<h1>{{ job.title }} <span id="status" class="warn">{{ job.status }}</span></h1>
-<p class="muted"><code>{{ job.cmd|join(' ') }}</code> · bắt đầu {{ job.started }} · <a href="{{ url_for('index') }}">về danh sách</a></p>
+<div class="page-head"><div><h1>{{ job.title }} <span id="status" class="chip warn">{{ job.status }}</span></h1>
+<p class="sub"><code>{{ job.cmd|join(' ') }}</code> · bắt đầu {{ job.started }}</p></div>
+<div class="actions">{% if idx is not none %}<a class="btn secondary" href="{{ url_for('book', idx=idx) }}">{{ icon('book') }} Trang sách</a>{% endif %}<a class="btn secondary" href="{{ url_for('index') }}">{{ icon('home') }} Về danh sách</a></div></div>
 {% if idx is not none %}{% include "_progress.html" %}{% endif %}
-<pre id="log">{{ job.log|join('\n') }}</pre>
+<div class="card"><h2>{{ icon('terminal') }} Log <label class="muted" style="font-weight:400;margin-left:auto"><input type="checkbox" id="follow" checked> tự cuộn</label></h2>
+<pre id="log">{{ job.log|join('\n') }}</pre></div>
 <script>
 const el = document.getElementById('log'), st = document.getElementById('status');
 async function tick(){
   const r = await fetch('{{ url_for("job_log", job_id=job.id) }}'); const d = await r.json();
-  el.textContent = d.log.join('\n'); el.scrollTop = el.scrollHeight;
-  st.textContent = d.status; st.className = d.status === 'done' ? 'ok' : (d.status === 'failed' ? 'bad' : 'warn');
+  el.textContent = d.log.join('\n'); if (document.getElementById('follow').checked) el.scrollTop = el.scrollHeight;
+  st.textContent = d.status === 'done' ? 'xong' : (d.status === 'failed' ? 'lỗi' : 'đang chạy');
+  st.className = 'chip ' + (d.status === 'done' ? 'ok' : (d.status === 'failed' ? 'bad' : 'warn'));
   if (d.status === 'running') setTimeout(tick, 1500);
 }
 tick();

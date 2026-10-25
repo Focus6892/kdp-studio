@@ -230,6 +230,67 @@ def cmd_license(args) -> int:
     return 0 if s["valid"] or not s["enforced"] else 1
 
 
+def cmd_doctor(args) -> int:
+    """Environment check for a fresh machine: Python, packages, GPU, browser, fonts, keys, license, folders."""
+    import importlib
+    import platform
+    import shutil
+
+    from . import keys as keymod
+    from .fonts import ASSET_FONT_DIR
+    from .paths import project_root
+
+    rows: list[tuple[str, str, str]] = []
+
+    def row(ok: bool | None, name: str, detail: str) -> None:
+        rows.append(("OK " if ok else ("-- " if ok is None else "!! "), name, detail))
+
+    v = sys.version_info
+    row(v >= (3, 11), "Python", f"{platform.python_version()} ({sys.executable})")
+    for mod, why in (("PIL", "images"), ("numpy", "images"), ("scipy", "line cleanup / QA"), ("reportlab", "PDF"), ("pypdf", "preflight"), ("flask", "web interface"),
+                     ("playwright", "KDP publish driver"), ("cryptography", "license"), ("anthropic", "Claude (optional)"), ("torch", "local GPU model (optional)"), ("diffusers", "local GPU model (optional)")):
+        try:
+            m = importlib.import_module(mod)
+            row(True, mod, f"{getattr(m, '__version__', '?')} - {why}")
+        except Exception:  # noqa: BLE001
+            row(None if "optional" in why else False, mod, f"missing - {why}")
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            props = torch.cuda.get_device_properties(0)
+            row(True, "GPU", f"{props.name}, {props.total_memory // (1024 ** 2)} MB, CUDA {torch.version.cuda}")
+        else:
+            row(None, "GPU", "torch has no CUDA device: local provider would run on the CPU (very slow)")
+    except Exception:  # noqa: BLE001
+        row(None, "GPU", "torch not installed: use Cloudflare, spec drawings or install with -Local")
+    browsers = [p for p in (r"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", r"C:/Program Files/Google/Chrome/Application/chrome.exe") if Path(p).is_file()]
+    row(bool(browsers) or bool(shutil.which("msedge") or shutil.which("chrome")), "Browser", browsers[0] if browsers else "Edge/Chrome not found in the usual folders (publish run needs one)")
+    fonts = sorted(p.name for p in ASSET_FONT_DIR.glob("*.ttf")) if ASSET_FONT_DIR.is_dir() else []
+    row(len(fonts) >= 6, "Fonts", f"{len(fonts)} bundled" if fonts else "assets/fonts missing")
+    present = [p["id"] for p in keymod.status_table() if p["vars"] and any(pr["complete"] for pr in p["profiles"])]
+    row(None if not present else True, "API keys", ", ".join(present) if present else "none yet (Cai dat in the web interface)")
+    try:
+        from . import license as lic
+
+        st = lic.status()
+        row(bool(st.get("valid")), "License", f"valid until {st.get('expires')}" if st.get("valid") else (st.get("error") or "not activated") + f" - machine id {lic.machine_id()}")
+    except Exception as exc:  # noqa: BLE001
+        row(None, "License", f"module unavailable ({str(exc)[:60]})")
+    root = project_root()
+    try:
+        (root / "state").mkdir(exist_ok=True)
+        row(True, "Folders", f"project {root}; books/, state/, publishing/ writable")
+    except Exception as exc:  # noqa: BLE001
+        row(False, "Folders", f"cannot write under {root}: {exc}")
+    for mark, name, detail in rows:
+        print(f"{mark}{name:10} {detail}")
+    bad = [r for r in rows if r[0] == "!! "]
+    print()
+    print("All good." if not bad else f"{len(bad)} problem(s) above; run install.ps1 again or install the missing package.")
+    return 0
+
+
 def cmd_ui(args) -> int:
     """Local web interface: books, builds, image tests, the publish queue, runs, quota, keys and license."""
     try:
@@ -973,6 +1034,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--books", action="append", help="folder holding <book>/book.yaml projects (repeatable; default: examples/ and books/ in the project)")
     p.add_argument("--no-browser", action="store_true")
     p.set_defaults(func=cmd_ui)
+
+    p = sub.add_parser("doctor", help="check Python, packages, GPU, browser, fonts, keys and license on this machine")
+    p.set_defaults(func=cmd_doctor)
     p = sub.add_parser("local-setup", help="install CUDA PyTorch + diffusers for the free local image provider and pre-download a model / LoRA")
     p.add_argument("--cuda", default="cu126", help="PyTorch wheel index matching your driver (cu126 for CUDA 12.6; cpu without a GPU)")
     p.add_argument("--model", default="Lykon/dreamshaper-8", help="Hugging Face repo id of an SD 1.5-family checkpoint to pre-download ('' to skip)")

@@ -1,31 +1,113 @@
-<!doctype html>
+{% from "_icons.html" import icon %}<!doctype html>
 <html lang="vi"><head><meta charset="utf-8"><title>{% block title %}kdp-studio{% endblock %}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-:root{--bg:#f6f4ef;--card:#fff;--ink:#222;--muted:#666;--line:#ddd;--accent:#c94c4c;--ok:#2a7a3b;--warn:#b26a00;--bad:#b3261e}
-body{margin:0;font:15px/1.45 system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--ink)}
-header{background:#1f2a44;color:#fff;padding:10px 20px;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
-header a{color:#fff;text-decoration:none;font-weight:600;opacity:.9}header a:hover{opacity:1}
-header .brand{font-size:18px;color:#e0a458}
-main{max-width:1180px;margin:18px auto;padding:0 16px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
-h1{font-size:22px;margin:4px 0 12px}h2{font-size:17px;margin:0 0 10px}
-table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600;font-size:13px}
+:root{--bg:#f3f4f7;--surface:#fff;--ink:#1b1f24;--muted:#667085;--line:#e4e7ec;--primary:#2f6fed;--primary-dark:#1f54c4;--accent:#f59e0b;
+ --ok:#15803d;--ok-bg:#dcfce7;--warn:#b45309;--warn-bg:#fef3c7;--bad:#b91c1c;--bad-bg:#fee2e2;--info-bg:#e8f0fe;--radius:12px;
+ --shadow:0 1px 2px rgba(16,24,40,.05),0 1px 3px rgba(16,24,40,.08);--side:236px}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.5 Inter,"Segoe UI",system-ui,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
+.ic{vertical-align:-3px;flex:none}
+.shell{display:flex;min-height:100vh}
+aside{width:var(--side);background:#141a2b;color:#dde3f0;display:flex;flex-direction:column;padding:16px 12px;position:sticky;top:0;height:100vh}
+aside .brand{display:flex;align-items:center;gap:10px;padding:6px 10px 18px;color:#fff;font-weight:700;font-size:17px}
+aside .brand:hover{text-decoration:none}
+aside .brand .logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#f59e0b,#ef4444);display:grid;place-items:center;color:#fff}
+aside nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;color:#c7cfdf;font-weight:500;margin-bottom:2px}
+aside nav a:hover{background:#1f2740;color:#fff;text-decoration:none}
+aside nav a.active{background:#2f6fed;color:#fff}
+aside nav a .soon{margin-left:auto;font-size:11px;background:#2a3350;color:#9aa5c0;padding:1px 7px;border-radius:999px}
+aside .foot{margin-top:auto;font-size:12.5px;color:#9aa5c0;padding:10px 12px;border-top:1px solid #253052}
+aside .foot .row{display:flex;align-items:center;gap:8px;margin-top:6px}
+main{flex:1;min-width:0}
+.topbar{display:flex;align-items:center;gap:14px;padding:12px 28px;background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.topbar .crumbs{font-weight:600;font-size:15px}
+.topbar .status{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.content{max-width:1240px;margin:0 auto;padding:22px 28px 60px}
+h1{font-size:24px;margin:4px 0 16px;letter-spacing:-.01em}h2{font-size:16px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+.page-head{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.page-head h1{margin:0}
+.page-head .actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.sub{color:var(--muted);margin:2px 0 0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.grid-2{grid-template-columns:1fr}}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{color:var(--muted);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.03em}
+tr:hover td{background:#fafbfc}
 .ok{color:var(--ok);font-weight:600}.warn{color:var(--warn);font-weight:600}.bad{color:var(--bad);font-weight:600}.muted{color:var(--muted)}
-button,.btn{background:var(--accent);color:#fff;border:0;border-radius:7px;padding:7px 12px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block}
-button.secondary,.btn.secondary{background:#444}button.small{padding:4px 8px;font-size:13px}
-input[type=text],input[type=number],select,textarea{border:1px solid #bbb;border-radius:6px;padding:6px 8px;font:inherit}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
-pre{background:#111;color:#e8e8e8;padding:12px;border-radius:8px;overflow:auto;max-height:70vh;font-size:13px}
-.pill{display:inline-block;padding:1px 8px;border-radius:999px;background:#eee;font-size:12px;margin-right:4px}
-.shots img{max-width:220px;border:1px solid var(--line);border-radius:6px;margin:4px}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:12.5px;font-weight:600;background:#eef1f5;color:#344054;margin-right:4px;white-space:nowrap}
+.chip.ok{background:var(--ok-bg);color:var(--ok)}.chip.warn{background:var(--warn-bg);color:var(--warn)}.chip.bad{background:var(--bad-bg);color:var(--bad)}.chip.info{background:var(--info-bg);color:var(--primary-dark)}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;background:#eef1f5;font-size:12px;margin-right:4px}
+button,.btn{display:inline-flex;align-items:center;gap:7px;background:var(--primary);color:#fff;border:1px solid transparent;border-radius:9px;padding:8px 14px;font:600 14px/1.2 inherit;cursor:pointer;text-decoration:none;transition:background .12s}
+button:hover,.btn:hover{background:var(--primary-dark);text-decoration:none;color:#fff}
+button.secondary,.btn.secondary{background:#fff;color:var(--ink);border-color:#cfd5df}
+button.secondary:hover,.btn.secondary:hover{background:#f3f5f8;color:var(--ink)}
+button.ghost,.btn.ghost{background:transparent;color:var(--primary);border-color:transparent;padding-left:8px;padding-right:8px}
+button.ghost:hover,.btn.ghost:hover{background:var(--info-bg);color:var(--primary-dark)}
+button.danger,.btn.danger{background:#fff;color:var(--bad);border-color:#f3b4b4}button.danger:hover,.btn.danger:hover{background:var(--bad-bg);color:var(--bad)}
+button.small,.btn.small{padding:5px 10px;font-size:13px;border-radius:8px}
+button:disabled{opacity:.6;cursor:wait}
+input[type=text],input[type=number],input[type=password],select,textarea{border:1px solid #cfd5df;border-radius:9px;padding:8px 10px;font:inherit;background:#fff;color:var(--ink);max-width:100%}
+input:focus,select:focus,textarea:focus{outline:2px solid #c7d7fb;border-color:var(--primary)}
+label{font-weight:500}
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.field .hint{color:var(--muted);font-size:12.5px;font-weight:400}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 form.inline{display:inline}
-[hidden]{display:none !important}  /* the button/.btn display rule above must not defeat the hidden attribute */
-</style></head>
+pre{background:#0f172a;color:#e2e8f0;padding:14px;border-radius:10px;overflow:auto;max-height:70vh;font-size:13px;line-height:1.45}
+pre.light{background:#f8fafc;color:#1b1f24;border:1px solid var(--line)}
+.shots img{max-width:220px;border:1px solid var(--line);border-radius:8px;margin:4px}
+.thumb{width:46px;height:62px;object-fit:cover;border-radius:5px;border:1px solid var(--line);background:#f3f4f7}
+.thumb.empty{display:grid;place-items:center;color:#b0b7c3}
+.cover-lg{width:150px;border-radius:8px;border:1px solid var(--line);box-shadow:var(--shadow)}
+.progress{background:#e9edf3;border-radius:999px;height:10px;overflow:hidden}
+.progress > div{background:linear-gradient(90deg,#2f6fed,#22c55e);height:100%;width:0;transition:width .4s}
+.toast{position:fixed;right:24px;bottom:24px;background:#141a2b;color:#fff;padding:12px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:460px;z-index:20;display:flex;gap:10px;align-items:flex-start}
+.toast button{background:transparent;border:0;color:#9aa5c0;padding:0;margin-left:auto}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.step{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.step .n{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--primary);color:#fff;font-size:12.5px;font-weight:700;margin-right:6px}
+.step.done .n{background:var(--ok)}
+details summary{cursor:pointer;font-weight:600;color:var(--primary)}
+[hidden]{display:none !important}
+.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:900px){.shell{flex-direction:column}aside{width:100%;height:auto;position:static;flex-direction:row;flex-wrap:wrap;align-items:center;padding:8px}aside .brand{padding:6px 10px}aside nav{display:flex;flex-wrap:wrap;gap:2px}aside .foot{display:none}.content{padding:16px}.topbar{padding:10px 16px}}
+</style>{% block head %}{% endblock %}</head>
 <body>
-<header><a class="brand" href="{{ url_for('index') }}">kdp-studio</a>
-<a href="{{ url_for('index') }}">Sách</a><a href="{{ url_for('create_form') }}">Tạo sách</a><a href="{{ url_for('queue') }}">Hàng đợi</a><a href="{{ url_for('runs') }}">Lần chạy</a><a href="{{ url_for('settings') }}">Cài đặt</a><a href="{{ url_for('license_page') }}">License</a>
-<span style="margin-left:auto;font-size:13px;opacity:.8">{{ now }}
-{% if license.available %}{% if license.valid %}· license OK{% else %}· <span style="color:#ffb4a8">chưa kích hoạt license</span>{% endif %}{% endif %}</span></header>
-<main>{% block body %}{% endblock %}</main>
+<div class="shell">
+<aside>
+  <a class="brand" href="{{ url_for('index') }}"><span class="logo">{{ icon('book', 18) }}</span>kdp-studio</a>
+  <nav>
+    <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint in ('index', 'book', 'job') else '' }}">{{ icon('book') }} Sách</a>
+    <a href="{{ url_for('create_form') }}" class="{{ 'active' if request.endpoint in ('create_form', 'create_book') else '' }}">{{ icon('plus') }} Tạo sách</a>
+    <a href="{{ url_for('queue') }}" class="{{ 'active' if request.endpoint == 'queue' else '' }}">{{ icon('queue') }} Hàng đợi</a>
+    <a href="{{ url_for('runs') }}" class="{{ 'active' if request.endpoint == 'runs' else '' }}">{{ icon('history') }} Lần chạy</a>
+    <a href="{{ url_for('settings') }}" class="{{ 'active' if request.endpoint == 'settings' else '' }}">{{ icon('key') }} Cài đặt</a>
+    <a href="{{ url_for('license_page') }}" class="{{ 'active' if request.endpoint == 'license_page' else '' }}">{{ icon('shield') }} License</a>
+    <a href="#" title="Đang thiết kế: xem docs/kham-pha-plan.md" onclick="return false">{{ icon('compass') }} Khám phá <span class="soon">sắp có</span></a>
+  </nav>
+  <div class="foot">
+    <div class="row">{{ icon('clock', 14) }} {{ now }}</div>
+    {% if license.available %}<div class="row">{{ icon('shield', 14) }} {% if license.valid %}<span style="color:#86efac">License OK</span>{% else %}<span style="color:#fca5a5">chưa kích hoạt license</span>{% endif %}</div>{% endif %}
+    {% if nav_quota %}<div class="row">{{ icon('upload', 14) }} KDP tuần này: {% for f, q in nav_quota.items() %}{{ f[:2] }} {{ q.remaining_created }}/{{ q.limit }}{% if not loop.last %} · {% endif %}{% endfor %}</div>{% endif %}
+  </div>
+</aside>
+<main>
+  <div class="topbar">
+    <div class="crumbs">{% block crumbs %}{{ self.title()|replace(' · kdp-studio', '') }}{% endblock %}</div>
+    <div class="status">
+      {% if running_jobs %}<a class="chip warn" href="{{ url_for('index') }}#jobs">{{ icon('loader', 13) }} {{ running_jobs }} việc đang chạy</a>{% endif %}
+      {% if keys_present %}{% set have = keys_present.values()|select|list|length %}<a class="chip {{ 'ok' if have else '' }}" href="{{ url_for('settings') }}">{{ icon('key', 13) }} {{ have }} key</a>{% endif %}
+      <a class="btn small" href="{{ url_for('create_form') }}">{{ icon('plus', 14) }} Tạo sách</a>
+    </div>
+  </div>
+  <div class="content">{% block body %}{% endblock %}</div>
+</main>
+</div>
+{% if message %}<div class="toast" id="toast">{{ icon('info', 18) }}<div>{{ message }}</div><button type="button" onclick="document.getElementById('toast').remove()" aria-label="đóng">{{ icon('x', 16) }}</button></div>
+<script>setTimeout(() => { const t = document.getElementById('toast'); if (t) t.remove(); }, 9000);</script>{% endif %}
 </body></html>

@@ -1,29 +1,29 @@
-{% extends "base.html" %}{% block title %}Hàng đợi · kdp-studio{% endblock %}
+{% extends "base.html" %}{% from "_icons.html" import icon %}{% block title %}Hàng đợi · kdp-studio{% endblock %}
 {% block body %}
-<h1>Hàng đợi đăng sách</h1>
-<div class="grid">
-<div class="card"><h2>Chọn sách để đưa vào hàng đợi</h2>
+<div class="page-head"><div><h1>Hàng đợi đăng sách</h1><p class="sub">Tick sách đã build, chọn định dạng và ưu tiên; "Chạy tựa kế tiếp" mở cửa sổ console với cổng duyệt như khi chạy tay.</p></div></div>
+<div class="grid-2">
+<div class="card"><h2>{{ icon('book') }} Chọn sách để đưa vào hàng đợi</h2>
 <form method="post" action="{{ url_for('queue_add') }}">
 <table><tr><th></th><th>Sách</th><th>Build</th><th>Định dạng có</th></tr>
 {% for b in books %}{% if not b.error %}
 <tr><td><input type="checkbox" name="books" value="{{ b.path }}" {% if not b.interior %}title="chưa build"{% endif %}></td>
 <td><a href="{{ url_for('book', idx=loop.index0) }}"><b>{{ b.title }}</b></a><div class="muted">{{ b.id }} · <a href="{{ url_for('book', idx=loop.index0) }}">mở trang sách</a></div></td>
-<td>{% if b.interior and b.cover %}<span class="ok">sẵn sàng</span>{% else %}<span class="warn">chưa build</span>{% endif %}</td>
+<td>{% if b.interior and b.cover %}<span class="chip ok">{{ icon('check', 12) }} sẵn sàng</span>{% else %}<span class="chip warn">chưa build</span>{% endif %}</td>
 <td>{% for f in b.formats %}<span class="pill">{{ f }}</span>{% endfor %}</td></tr>
 {% endif %}{% endfor %}
 </table>
 <p class="muted">Chưa thấy sách của bạn? <a href="{{ url_for('index') }}#dirs">Nạp thêm thư mục sách</a> ở trang Sách (thư mục bất kỳ có book.yaml).</p>
-<p><label>Định dạng <select name="fmt">{% for f in formats %}<option value="{{ f }}">{{ f }}</option>{% endfor %}</select></label>
-<label>Ưu tiên (1 = trước) <input type="number" name="priority" value="5" min="1" max="99" style="width:60px"></label>
-<button>Thêm vào hàng đợi</button></p>
+<div class="row" style="margin-top:8px"><label>Định dạng <select name="fmt">{% for f in formats %}<option value="{{ f }}">{{ f }}</option>{% endfor %}</select></label>
+<label>Ưu tiên (1 = trước) <input type="number" name="priority" value="5" min="1" max="99" style="width:64px"></label>
+<button>{{ icon('plus') }} Thêm vào hàng đợi</button></div>
 </form>
 <p class="muted">Chỉ sách có định dạng đó trong book.yaml mới được thêm. Tool kiểm tra build, preflight và quota tuần trước khi mở trình duyệt.</p>
 </div>
-<div class="card"><h2>Đang chờ ({{ items|length }})</h2>
+<div class="card"><h2>{{ icon('queue') }} Đang chờ ({{ items|length }})</h2>
 {% if items %}<table><tr><th>#</th><th>Sách</th><th>Định dạng</th><th>Ưu tiên</th><th>Trạng thái</th><th></th></tr>
-{% for it in items %}<tr><td>{{ it.id }}</td><td>{{ it.book_id or it.book_path }}</td><td>{{ it.fmt }}</td><td>{{ it.priority }}</td><td>{{ it.status }}</td>
-<td><form class="inline" method="post" action="{{ url_for('queue_remove', item_id=it.id) }}"><button class="small secondary">Bỏ</button></form></td></tr>{% endfor %}</table>
-<form method="post" action="{{ url_for('queue_run_next') }}" style="margin-top:10px"><button>Chạy tựa kế tiếp còn quota</button></form>
+{% for it in items %}<tr><td>{{ it.id }}</td><td>{{ it.book_id or it.book_path }}</td><td>{{ it.fmt }}</td><td>{{ it.priority }}</td><td><span class="chip">{{ it.status }}</span></td>
+<td><form class="inline" method="post" action="{{ url_for('queue_remove', item_id=it.id) }}"><button class="small danger">{{ icon('x', 13) }} Bỏ</button></form></td></tr>{% endfor %}</table>
+<form method="post" action="{{ url_for('queue_run_next') }}" style="margin-top:12px"><button>{{ icon('play') }} Chạy tựa kế tiếp còn quota</button></form>
 {% else %}<p class="muted">Hàng đợi trống.</p>{% endif %}
 <p class="muted"><a href="{{ url_for('queue', all=1) }}">Xem cả mục đã chạy</a></p>
 <table style="margin-top:10px"><tr><th>Định dạng</th><th>Còn tạo</th><th>Còn nộp</th></tr>{% for f, q in quota.items() %}<tr><td>{{ f }}</td><td>{{ q.remaining_created }}</td><td>{{ q.remaining_submitted }}</td></tr>{% endfor %}</table>

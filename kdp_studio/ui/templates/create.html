@@ -1,34 +1,37 @@
-{% extends "base.html" %}{% block title %}Tạo sách · kdp-studio{% endblock %}
+{% extends "base.html" %}{% from "_icons.html" import icon %}{% block title %}Tạo sách · kdp-studio{% endblock %}
 {% block body %}
-<h1>Tạo sách tô màu mới</h1>
-{% if error %}<div class="card"><span class="bad">{{ error }}</span></div>{% endif %}
-<div class="grid">
-<div class="card" style="grid-column:1/-1">
+<div class="page-head"><div><h1>Tạo sách tô màu mới</h1><p class="sub">Gõ vài ô (chỉ thư mục hoặc chủ đề cũng đủ), bấm <b>Gợi ý</b> để tool hoàn thiện phần còn lại, rồi <b>Tạo</b>.</p></div></div>
+{% if error %}<div class="card" style="border-color:#f3b4b4"><span class="bad">{{ icon('alert') }} {{ error }}</span></div>{% endif %}
 <form method="post" action="{{ url_for('create_book') }}" id="create-form">
-<div class="grid">
-<div>
-<p><label>Thư mục (không dấu, không cách) <input type="text" name="folder" required placeholder="ocean-animals" style="width:95%"></label></p>
-<p><label>Tiêu đề <input type="text" name="title" required placeholder="Ocean Animals Coloring Book" style="width:95%"></label></p>
-<p><label>Phụ đề <input type="text" name="subtitle" placeholder="30 Bold and Easy Sea Creatures for Kids and Adults" style="width:95%"></label></p>
-<p><label>Tác giả (bút danh) <input type="text" name="author" required placeholder="Mia Hartwell" style="width:95%"></label></p>
-<p><label>Chủ đề (theme) <input type="text" name="theme" required placeholder="bold and easy ocean animals" style="width:95%"></label></p>
-<p><label>Đối tượng <input type="text" name="audience" value="adults and kids, beginners" style="width:95%"></label></p>
+<div class="grid-2">
+<div class="card"><h2>{{ icon('edit') }} Nội dung</h2>
+<div class="field"><label>Thư mục (không dấu, không cách)</label><input type="text" name="folder" required placeholder="ocean-animals"></div>
+<div class="field"><label>Tiêu đề</label><input type="text" name="title" required placeholder="Ocean Animals Coloring Book"></div>
+<div class="field"><label>Phụ đề</label><input type="text" name="subtitle" placeholder="30 Bold and Easy Sea Creatures for Kids and Adults"></div>
+<div class="field"><label>Tác giả (bút danh)</label><input type="text" name="author" required placeholder="Mia Hartwell"></div>
+<div class="field"><label>Chủ đề (theme)</label><input type="text" name="theme" required placeholder="bold and easy ocean animals"></div>
+<div class="field"><label>Đối tượng</label><input type="text" name="audience" value="adults and kids, beginners"></div>
 </div>
-<div>
-<p><label>Số trang tô màu <input type="number" name="images" value="30" min="12" max="120" style="width:80px"></label>
-<label style="margin-left:12px">Khổ <select name="trim"><option>8.5x11</option><option>8x10</option><option>6x9</option></select></label>
-<label style="margin-left:12px">Giá $ <input type="number" step="0.01" name="price" value="9.99" style="width:80px"></label></p>
-<p><label>Nguồn ảnh <select name="provider">{% for p in providers %}<option value="{{ p }}" {% if p == default_provider %}selected{% endif %}>{{ p }}</option>{% endfor %}</select></label>
-<span class="muted">auto = tự chuyển giữa các tài khoản và nền tảng trong chuỗi dự phòng khi hết quota (xem Cài đặt) · local = GPU của bạn · spec = bản vẽ vector · cloudflare/openai/google/stability cần key</span></p>
-<p><label>Từ khoá (tối đa 7, cách nhau bằng dấu phẩy) <input type="text" name="keywords" placeholder="ocean coloring book, sea animals coloring, easy coloring book kids" style="width:95%"></label></p>
-<p><label>Chủ đề từng trang (mỗi dòng một trang; để trống thì tool tự biến tấu từ theme)<br><textarea name="subjects" rows="8" style="width:95%" placeholder="a smiling whale spouting water&#10;a sea turtle swimming over coral&#10;an octopus holding three shells"></textarea></label></p>
+<div class="card"><h2>{{ icon('settings') }} Khổ, giá, nguồn ảnh</h2>
+<div class="row" style="margin-bottom:12px">
+<label>Số trang tô màu <input type="number" name="images" value="30" min="12" max="120" style="width:84px"></label>
+<label>Khổ <select name="trim"><option>8.5x11</option><option>8x10</option><option>6x9</option></select></label>
+<label>Giá $ <input type="number" step="0.01" name="price" value="9.99" style="width:84px"></label>
+</div>
+<div class="field"><label>Nguồn ảnh</label><select name="provider">{% for p in providers %}<option value="{{ p }}" {% if p == default_provider %}selected{% endif %}>{{ p }}</option>{% endfor %}</select>
+<span class="hint">auto = tự chuyển giữa các tài khoản và nền tảng trong chuỗi dự phòng khi hết quota (xem Cài đặt) · local = GPU của bạn · spec = bản vẽ vector · cloudflare/openai/google/stability cần key</span></div>
+<div class="field"><label>Từ khoá (tối đa 7, cách nhau bằng dấu phẩy)</label><input type="text" name="keywords" placeholder="ocean coloring book, sea animals coloring, easy coloring book kids"></div>
+<div class="field"><label>Chủ đề từng trang (mỗi dòng một trang; để trống thì tool tự biến tấu từ theme)</label><textarea name="subjects" rows="8" placeholder="a smiling whale spouting water&#10;a sea turtle swimming over coral&#10;an octopus holding three shells"></textarea></div>
 </div>
 </div>
-<p style="border-top:1px solid var(--line);padding-top:10px;margin-top:4px">
-<button type="button" class="secondary" id="suggest-btn" onclick="suggestAll()">Gợi ý điền tất cả</button>
-<label class="muted" style="margin-left:8px"><input type="checkbox" id="overwrite"> ghi đè cả ô đã điền</label>
-<span id="suggest-note" class="muted" style="margin-left:8px">Gõ vài ô (chỉ thư mục hoặc chủ đề cũng đủ) rồi bấm: tool hoàn thiện tiêu đề, phụ đề, bút danh, từ khoá và đủ số chủ đề từng trang cho khớp nhau. Nguồn theo thứ tự: Claude (key Anthropic) → Cloudflare Workers AI → mẫu có sẵn, không cần key.</span></p>
-<p><button>Tạo book.yaml và mở trang sách</button> <span class="muted">Sau đó bấm Build để sinh ruột, bìa và preflight; tiến trình hiện theo từng trang.</span></p>
+<div class="card">
+<div class="row">
+<button type="button" class="secondary" id="suggest-btn" onclick="suggestAll()">{{ icon('sparkles') }} Gợi ý điền tất cả</button>
+<label class="muted" style="font-weight:400"><input type="checkbox" id="overwrite"> ghi đè cả ô đã điền</label>
+<span id="suggest-note" class="muted">Nguồn theo thứ tự: Claude (key Anthropic) → Cloudflare Workers AI → mẫu có sẵn, không cần key.</span>
+</div>
+<div class="row" style="margin-top:14px"><button>{{ icon('check') }} Tạo book.yaml và mở trang sách</button> <span class="muted">Sau đó bấm Build để sinh ruột, bìa và preflight; tiến trình hiện theo từng trang.</span></div>
+</div>
 </form>
 <script>
 async function suggestAll(){
@@ -48,7 +51,5 @@ async function suggestAll(){
 document.addEventListener('input', e => { if (e.target.classList) e.target.classList.remove('suggested'); });
 </script>
 <style>.suggested{background:#fff6d6}</style>
-</div>
-</div>
-<div class="card"><h2>Demo</h2><p class="muted">Cuốn mẫu <b>bold-easy-flowers</b> trong danh sách Sách dùng đúng luồng này (30 chủ đề hoa). Thử nhanh: gõ mỗi ô Thư mục, ví dụ <code>ocean-animals</code>, bấm <b>Gợi ý điền tất cả</b> rồi <b>Tạo</b>. Mở trang sách của nó để xem ô "Tiến trình tạo ruột": số trang đã xong trên tổng số, số lần sinh lại, giây mỗi trang và ảnh thu nhỏ các trang mới nhất; cuối cùng là liên kết PDF ruột và bìa.</p></div>
+<div class="card"><h2>{{ icon('info') }} Demo</h2><p class="muted">Cuốn mẫu <b>bold-easy-flowers</b> trong danh sách Sách dùng đúng luồng này (30 chủ đề hoa). Thử nhanh: gõ mỗi ô Thư mục, ví dụ <code>ocean-animals</code>, bấm <b>Gợi ý điền tất cả</b> rồi <b>Tạo</b>. Mở trang sách của nó để xem ô "Tiến trình tạo ruột": số trang đã xong trên tổng số, số lần sinh lại, giây mỗi trang và ảnh thu nhỏ các trang mới nhất; cuối cùng là liên kết PDF ruột và bìa.</p></div>
 {% endblock %}
