@@ -291,7 +291,7 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
         return render_template("book.html", idx=idx, e=entry, b=b, fmt=fmt, checklist=checklist, art={k: (str(v) if v else None) for k, v in art.items()}, title_rows=title_rows, runs=[r.name for r in runs],
                                providers=["auto", "placeholder", "spec", "local", "pollinations", "cloudflare", "openai", "google", "stability"], is_coloring=isinstance(b.interior, ColoringInterior),
                                is_story=is_story, story=story, brief_exists=(b.book_dir / "story_brief.yaml").is_file(), llm_ready=claude_available() or claude_cli.available() or cloudflare_available(),
-                               cli_ready=claude_cli.available(), api_ready=claude_available())
+                               cli_ready=claude_cli.available(), api_ready=claude_available(), gemini_ready=bool(keymod.current_values().get("GEMINI_API_KEY")))
 
     @app.post("/book/<int:idx>/build")
     def build(idx: int):

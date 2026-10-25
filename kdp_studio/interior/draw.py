@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 from pathlib import Path
@@ -32,7 +33,7 @@ Any shape may add "stroke": 8 (thin detail), 12 (normal) or 16 (bold outline).
 Rules: one clearly centred subject that fills 70 to 85 percent of the canvas height, with white space around it; big simple shapes and large
 areas to colour (no enclosed cell smaller than about 50 x 50); every region closed by its outline; outlines do not cross each other except
 where parts join; build symmetry with repeat and mirror; no shading, hatching, text, letters, numbers, people, faces, hands or logos;
-between 8 and 60 shapes; every coordinate inside the canvas."""
+between 8 and 60 shapes; every coordinate inside the canvas; "dot" only for small details (radius at most 25), never as a flower centre or a filled area."""
 
 
 def subject_prompt(subject: str, style: str, audience: str, note: str | None = None) -> str:
@@ -63,12 +64,25 @@ def check_spec(spec: dict) -> list[str]:
         problems.append("the drawing runs outside the canvas")
     if ys and (max(ys) - min(ys)) < 0.45 * ch:
         problems.append("the subject is too small: make it fill 70 to 85 percent of the canvas height")
+    cw_ = float(cw)
+    big_dots = [sh for sh in _walk(spec["shapes"]) if sh.get("type") == "dot" and float(sh.get("r", 0)) > 0.03 * cw_]
+    if big_dots:
+        problems.append(f"{len(big_dots)} filled dot(s) with radius over {0.03 * cw_:.0f} would print as black blobs: use a circle outline instead")
     ink = ink_ratio(spec)
     if ink < 0.015:
         problems.append(f"almost no ink ({ink:.1%}): the drawing is empty or tiny")
     elif ink > 0.35:
         problems.append(f"too much ink ({ink:.1%}): lines too dense or shapes filled")
     return problems
+
+
+def _walk(shapes: list) -> list[dict]:
+    out: list[dict] = []
+    for sh in shapes or []:
+        if isinstance(sh, dict):
+            out.append(sh)
+            out += _walk(sh.get("shapes") or [])
+    return out
 
 
 def slugify(text: str) -> str:
@@ -125,6 +139,50 @@ def _call_api(system: str, user: str, model: str | None) -> tuple[dict, dict]:
                  "cost_usd": round(cost, 5), "seconds": 0.0}
 
 
+GEMINI_DEFAULT = "gemini-2.5-flash"
+GEMINI_PRICES = {  # USD per million tokens (input, output incl. thinking) on the paid tier, ai.google.dev/gemini-api/docs/pricing 2026-10; lite before flash so the match is right
+    "gemini-2.5-flash-lite": (0.10, 0.40), "gemini-2.5-flash": (0.30, 2.50), "gemini-2.5-pro": (1.25, 10.0), "gemini-3.5-flash-lite": (0.30, 2.50),
+    "gemini-3.1-flash-lite": (0.25, 1.50), "gemini-3.6-flash": (0.75, 3.75), "gemini-3.8-flash": (0.75, 3.75), "gemini-3-flash": (0.50, 3.00), "gemini-3.1-pro": (2.0, 12.0)}
+
+
+def _call_gemini(system: str, user: str, model: str | None) -> tuple[dict, dict]:
+    """Gemini through the Gemini API (generateContent in JSON mode, key GEMINI_API_KEY from .env or the environment)."""
+    import urllib.error
+    import urllib.request
+
+    from .. import keys as keymod
+    from ..suggest import parse_json_object
+
+    key = keymod.current_values().get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    if not key:
+        raise RuntimeError("chưa có GEMINI_API_KEY (Cài đặt -> Google Gemini API)")
+    model = model or os.environ.get("KDP_STUDIO_GEMINI_MODEL") or GEMINI_DEFAULT
+    body = {"system_instruction": {"parts": [{"text": system}]}, "contents": [{"parts": [{"text": user}]}],
+            "generationConfig": {"responseMimeType": "application/json", "temperature": 0.8}}
+    req = urllib.request.Request(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", data=json.dumps(body).encode("utf-8"),
+                                 headers={"x-goog-api-key": key, "Content-Type": "application/json"}, method="POST")
+    t0 = time.monotonic()
+    try:
+        raw = urllib.request.urlopen(req, timeout=600).read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"Gemini HTTP {exc.code}: {exc.read().decode('utf-8', 'replace')[:200]}") from None
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise RuntimeError(f"Gemini: {str(exc)[:200]}") from None
+    data = json.loads(raw)
+    cands = data.get("candidates") or []
+    text = "".join(p.get("text", "") for p in ((cands[0].get("content") or {}).get("parts") or [])) if cands else ""
+    obj = parse_json_object(text)
+    if not isinstance(obj, dict):
+        raise RuntimeError("Gemini reply had no JSON object: " + (text[:200] or json.dumps(data)[:200]))
+    u = data.get("usageMetadata") or {}
+    tokens_in, tokens_out, thinking = int(u.get("promptTokenCount") or 0), int(u.get("candidatesTokenCount") or 0), int(u.get("thoughtsTokenCount") or 0)
+    version = str(data.get("modelVersion") or model)
+    price = next((v for k, v in GEMINI_PRICES.items() if k in version), (0.0, 0.0))
+    cost = (tokens_in * price[0] + (tokens_out + thinking) * price[1]) / 1e6
+    return obj, {"engine": "gemini", "model": version, "input_tokens": tokens_in, "cached_tokens": int(u.get("cachedContentTokenCount") or 0),
+                 "output_tokens": tokens_out + thinking, "thinking_tokens": thinking, "cost_usd": round(cost, 5), "seconds": round(time.monotonic() - t0, 1)}
+
+
 def pick_engine(engine: str = "auto") -> str:
     from .. import claude_cli, llm
 
@@ -138,6 +196,11 @@ def pick_engine(engine: str = "auto") -> str:
         raise RuntimeError("không thấy lệnh claude (Claude Code); cài và đăng nhập, hoặc dùng --engine api")
     if engine == "api" and not llm.claude_available():
         raise RuntimeError("chưa có ANTHROPIC_API_KEY (Cài đặt); hoặc dùng --engine cli")
+    if engine == "gemini":
+        from .. import keys as keymod
+
+        if not (keymod.current_values().get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")):
+            raise RuntimeError("chưa có GEMINI_API_KEY (Cài đặt -> Google Gemini API)")
     return engine
 
 
@@ -160,7 +223,7 @@ def draw_specs(book: Book, out_dir: Path, pages: list[int] | None = None, engine
     subjects = page_subjects(book)
     pages = pages if pages is not None else list(range(len(subjects)))
     out_dir.mkdir(parents=True, exist_ok=True)
-    call = _call_cli if engine == "cli" else _call_api
+    call = {"cli": _call_cli, "api": _call_api, "gemini": _call_gemini}[engine]
     style = re.sub(r"\bColoringBookAF,?\s*", "", interior.style_prompt or "bold clean outlines, simple shapes, large areas to colour").strip()
     records: list[dict] = []
     totals = {"pages": 0, "ok": 0, "input_tokens": 0, "output_tokens": 0, "thinking_tokens": 0, "cost_usd": 0.0, "seconds": 0.0}

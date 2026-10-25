@@ -319,10 +319,13 @@ class OpenAIImagesProvider:
 
 
 class GoogleImagenProvider:
-    """Imagen through the Gemini API (`models/<model>:predict`, header x-goog-api-key). Written from the public docs."""
+    """Imagen through the Gemini API (`models/<model>:predict`), or a Gemini image model such as gemini-2.5-flash-image /
+    gemini-3.1-flash-image (`:generateContent` with an image response) when the model name starts with "gemini". Header
+    x-goog-api-key. Written from the public docs; the Gemini image path needs a key with image quota (no free tier)."""
 
     name = "google"
     RATIOS = {"1:1": 1.0, "3:4": 0.75, "4:3": 4 / 3, "9:16": 9 / 16, "16:9": 16 / 9}
+    GEMINI_RATIOS = {"1:1": 1.0, "2:3": 2 / 3, "3:4": 0.75, "4:5": 0.8, "3:2": 1.5, "4:3": 4 / 3, "5:4": 1.25, "9:16": 9 / 16, "16:9": 16 / 9}
 
     def __init__(self, model: str | None, size: str, api_key: str | None = None, negative_prompt: str | None = None):
         self.model = model or "imagen-4.0-generate-001"
@@ -330,15 +333,28 @@ class GoogleImagenProvider:
         self.api_key = api_key or _key("GEMINI_API_KEY", "GOOGLE_API_KEY")
 
     @property
+    def is_gemini(self) -> bool:
+        return self.model.startswith("gemini")
+
+    @property
     def endpoint(self) -> str:
-        return f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:predict"
+        return f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:" + ("generateContent" if self.is_gemini else "predict")
 
     def body(self, prompt: str, size: tuple[int, int]) -> dict:
+        if self.is_gemini:
+            return {"contents": [{"parts": [{"text": _with_negative(prompt, self.negative_prompt)}]}],
+                    "generationConfig": {"responseModalities": ["IMAGE"], "imageConfig": {"aspectRatio": _aspect(size, self.GEMINI_RATIOS)}}}
         return {"instances": [{"prompt": _with_negative(prompt, self.negative_prompt)}], "parameters": {"sampleCount": 1, "aspectRatio": _aspect(size, self.RATIOS), "personGeneration": "allow_adult"}}
 
     def generate(self, prompt: str, index: int, attempt: int, out_path: Path, size: tuple[int, int]) -> Path:
         req = urllib.request.Request(self.endpoint, data=json.dumps(self.body(prompt, size)).encode(), headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"})
         payload = json.loads(_request(req))
+        if self.is_gemini:
+            parts = ((payload.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
+            images = [p["inlineData"]["data"] for p in parts if isinstance(p.get("inlineData"), dict) and p["inlineData"].get("data")]
+            if not images:
+                raise ProviderError(f"Gemini returned no image (filtered?): {json.dumps(payload)[:400]}")
+            return _write(out_path, base64.b64decode(images[0]))
         preds = payload.get("predictions") or []
         if not preds or not preds[0].get("bytesBase64Encoded"):
             raise ProviderError(f"Imagen returned no image (filtered?): {json.dumps(payload)[:400]}")

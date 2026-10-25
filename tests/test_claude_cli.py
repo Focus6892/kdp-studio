@@ -122,3 +122,31 @@ def test_ui_draw_route_starts_a_job(monkeypatch, tmp_path):
     assert r.status_code == 302 and r.headers["Location"].endswith("/jobs/job-d")
     title, cmd, bidx = started[0]
     assert title.startswith("vẽ vector") and bidx == idx and cmd[-7:] == ["--engine", "cli", "--pages", "1-3", "--model", "sonnet", "--set-provider"]
+
+
+def test_gemini_engine_parses_usage_and_prices(monkeypatch):
+    import urllib.request
+
+    payload = {"candidates": [{"content": {"parts": [{"text": json.dumps(SPEC)}]}}], "modelVersion": "gemini-2.5-flash",
+               "usageMetadata": {"promptTokenCount": 900, "candidatesTokenCount": 1000, "thoughtsTokenCount": 500}}
+    seen = {}
+
+    class Resp:
+        def read(self):
+            return json.dumps(payload).encode("utf-8")
+
+    def fake_urlopen(req, timeout=0):
+        seen.update(url=req.full_url, body=json.loads(req.data.decode("utf-8")), key=req.get_header("X-goog-api-key"))
+        return Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr("kdp_studio.keys.current_values", lambda: {"GEMINI_API_KEY": "g-test"})
+    obj, usage = draw._call_gemini("sys", "draw a daisy", None)
+    assert obj["title"] == "Big daisy" and "gemini-2.5-flash:generateContent" in seen["url"] and seen["key"] == "g-test"
+    assert seen["body"]["generationConfig"]["responseMimeType"] == "application/json" and seen["body"]["system_instruction"]["parts"][0]["text"] == "sys"
+    assert usage["input_tokens"] == 900 and usage["output_tokens"] == 1500 and usage["thinking_tokens"] == 500 and usage["model"] == "gemini-2.5-flash"
+    assert usage["cost_usd"] == round((900 * 0.30 + 1500 * 2.50) / 1e6, 5) and draw.pick_engine("gemini") == "gemini"
+    monkeypatch.setattr("kdp_studio.keys.current_values", lambda: {})
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    with pytest.raises(RuntimeError):
+        draw.pick_engine("gemini")
