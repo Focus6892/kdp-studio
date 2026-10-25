@@ -327,30 +327,48 @@ def bridge_ends(sk: np.ndarray, max_gap: int, cone_deg: int = 35) -> tuple[np.nd
     return sk, int(len(ends)), joined
 
 
-def normalize_strokes(b: Image.Image, width_px: int, bridge_px: int, min_stroke_px: int, spur_px: int, keep_dots_area: int) -> Image.Image:
+def normalize_strokes(b: Image.Image, min_w: int, max_w: int, target_ink: float, bridge_px: int, min_stroke_px: int) -> tuple[Image.Image, int]:
     """Redraw the line art at one stroke weight: centreline (thinning) -> drop short isolated marks -> prune spurs ->
-    bridge open ends -> dilate to `width_px`. Small solid features thicker than a stroke (flower centres, eyes) that were
-    not hollowed are kept as drawn when their area is under `keep_dots_area`."""
-    if _ndimage is None or width_px < 1:  # pragma: no cover
-        return b
+    bridge open ends -> dilate to a weight chosen from the drawing's density: a sparse drawing gets bold lines, a dense
+    one thinner lines, so that ink covers about `target_ink` of the page (clamped to [min_w, max_w]). Solid features
+    thicker than 1.5x the stroke (flower centres, eyes, small fills) are kept as drawn. Returns (image, weight px)."""
+    if _ndimage is None or max_w < 1:  # pragma: no cover
+        return b, 0
     ink = np.asarray(b) < 128
     if not ink.any():
-        return b
+        return b, 0
     sk = thin_fast(ink)
     sk = drop_short_strokes(sk, min_stroke_px)
-    sk = prune_spurs(sk, spur_px)
+    sk = prune_spurs(sk, max(2, round(0.5 * min_w)))
     sk, _ends, _joined = bridge_ends(sk, bridge_px)
-    out = _ndimage.distance_transform_edt(~sk) <= width_px / 2
-    thick = _ndimage.distance_transform_edt(ink) > width_px * 0.75
-    if thick.any():
-        labels, n = _ndimage.label(ink, structure=EIGHT)
-        ids = np.unique(labels[thick])
-        ids = ids[ids > 0]
-        areas = np.bincount(labels.ravel())
-        small = [i for i in ids if areas[i] < keep_dots_area]
-        if small:
-            out |= np.isin(labels, small)
-    return Image.fromarray(np.where(out, 0, 255).astype(np.uint8), "L")
+    length = int(sk.sum())
+    w = int(np.clip(round(target_ink * sk.size / max(length, 1)), min_w, max_w))
+    out = _ndimage.distance_transform_edt(~sk) <= w / 2
+    out |= _solid_features(ink, w)
+    return Image.fromarray(np.where(out, 0, 255).astype(np.uint8), "L"), w
+
+
+def _solid_features(ink: np.ndarray, w: int) -> np.ndarray:
+    """Compact solid shapes (flower centres, eyes, dots) to keep as drawn: the deep cores of the ink that are roundish and
+    small, grown back to their outline. Fat lines also have deep cores, but theirs are long and thin, so they are left to
+    the normalisation."""
+    r = max(1, round(0.75 * w))
+    core = _ndimage.distance_transform_edt(ink) > r
+    if not core.any():
+        return np.zeros_like(ink)
+    labels, n = _ndimage.label(core, structure=EIGHT)
+    keep = np.zeros(n + 1, dtype=bool)
+    for i, sl in enumerate(_ndimage.find_objects(labels), start=1):
+        if sl is None:
+            continue
+        bh, bw = sl[0].stop - sl[0].start, sl[1].stop - sl[1].start
+        area = int((labels[sl] == i).sum())
+        if max(bh, bw) <= max(12 * w, 120) and area >= 0.5 * bh * bw:  # compact (roundish) and small: a flower centre, not a long fat stroke
+            keep[i] = True
+    kept = keep[labels]
+    if not kept.any():
+        return np.zeros_like(ink)
+    return _ndimage.distance_transform_edt(~kept) <= r
 
 
 def prepare_art(src: Image.Image, box_px: tuple[int, int], opts: CleanupOptions) -> Image.Image:
@@ -364,13 +382,12 @@ def prepare_art(src: Image.Image, box_px: tuple[int, int], opts: CleanupOptions)
         b = close_gaps(b, max(1, round(0.75 * scale)))  # breaks up to about 1.5 source pixels wide (a one-pixel gap widens a little in the blur)
     if opts.despeckle > 0:
         b = remove_specks(b, round((3 * opts.despeckle * max(scale, 1.0)) ** 2))  # blobs under ~3 source px per despeckle step
-    width_px = max(opts.min_line_px, round(opts.line_weight_frac * box_px[0])) if opts.line_weight_frac > 0 else 0
     if opts.hollow_fills:
-        border = width_px or max(opts.min_line_px, round(box_px[0] * opts.hollow_border_frac))
+        border = max(opts.min_line_px, round(box_px[0] * opts.hollow_border_frac))
         b = hollow_fills(b, border, min_core_area=(border * opts.hollow_min_core) ** 2)
-    if width_px:
-        b = normalize_strokes(b, width_px, bridge_px=round(opts.bridge_frac * box_px[0]), min_stroke_px=round(opts.min_stroke_frac * box_px[0]),
-                              spur_px=max(2, round(0.5 * width_px)), keep_dots_area=(width_px * 12) ** 2)
+    if opts.line_weight_frac > 0:
+        b, _w = normalize_strokes(b, min_w=max(opts.min_line_px, round(opts.min_weight_frac * box_px[0])), max_w=round(opts.line_weight_frac * box_px[0]),
+                                  target_ink=opts.target_ink, bridge_px=round(opts.bridge_frac * box_px[0]), min_stroke_px=round(opts.min_stroke_frac * box_px[0]))
     b = thicken(b, opts.min_line_px)
     b = smooth_edges(b, max(1.0, 0.35 * scale))  # rounds the remaining one-source-pixel steps without thinning 3 px lines
     return close_gaps(b, 1) if opts.close_gaps else b  # the smoothing can nick a freshly bridged joint by a pixel: seal it again

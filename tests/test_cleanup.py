@@ -32,9 +32,24 @@ def test_prepare_art_bridges_gaps_drops_specks_and_hollows_only_big_fills():
     assert not a[int(20 * S):int(40 * S), int(20 * S):int(40 * S)].any(), "a one-pixel speck must disappear"
     assert not a[int(680 * S), int(200 * S)] and a[int(601 * S), int(200 * S)], "the big block becomes a ring: white centre, ink border"
     widths = [int((a[y, int(140 * S):int(160 * S)]).sum()) for y in range(int(396 * S), int(404 * S), 4)]  # the circle's left edge, crossed horizontally: one weight
-    assert all(5 <= w_ <= 13 for w_ in widths), widths  # normalised to about 8 px (line_weight_frac 0.004 of 2000)
-    assert a[int(608 * S), int(408 * S)], "a small dot stays solid instead of turning into a tiny ring"
+    assert all(10 <= w_ <= 20 for w_ in widths), widths  # a sparse drawing gets the bold end of the range (cap 16 px = 0.008 of 2000)
+    assert a[int(608 * S), int(408 * S)], "the small dot is still solid after stroke normalisation"
     assert estimate_stroke_px(art) >= 3
+
+
+def test_stroke_weight_adapts_to_density():
+    sparse = Image.new("L", (512, 768), 255)
+    ImageDraw.Draw(sparse).ellipse((100, 200, 400, 500), outline=0, width=3)
+    dense = Image.new("L", (512, 768), 255)
+    d = ImageDraw.Draw(dense)
+    for y in range(20, 760, 14):
+        d.line((10, y, 500, y + 7), fill=0, width=2)
+    for x in range(20, 500, 14):
+        d.line((x, 10, x + 5, 760), fill=0, width=2)
+    opts = CleanupOptions(hollow_fills=False, despeckle=0)
+    w_sparse = estimate_stroke_px(prepare_art(sparse, (2000, 3000), opts))
+    w_dense = estimate_stroke_px(prepare_art(dense, (2000, 3000), opts))
+    assert w_sparse >= 12 and w_dense <= 8 and w_sparse > 1.5 * w_dense, (w_sparse, w_dense)
 
 
 def test_prepare_art_edges_are_smooth_not_stepped():

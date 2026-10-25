@@ -121,7 +121,9 @@ class CleanupOptions(BaseModel):
     hollow_border_frac: float = Field(0.006, ge=0.001, le=0.03)  # border kept around hollowed regions, as a fraction of the art width
     hollow_min_core: int = Field(6, ge=1, le=30)  # only solid cores at least (border * this)^2 px are hollowed; smaller fills and dots stay solid
     # stroke normalisation: every line is redrawn at one weight, like the bold-and-easy books (0 = keep the model's own line widths)
-    line_weight_frac: float = Field(0.0045, ge=0.0, le=0.02)  # stroke width as a fraction of the art width: 0.0045 = 9 px on a 2000 px box = about 2.4 pt, the bold-and-easy range (2-4 pt)
+    line_weight_frac: float = Field(0.008, ge=0.0, le=0.02)  # heaviest stroke, as a fraction of the art width: 0.008 = 16 px on a 2000 px box = about 4.3 pt (0 = keep the model's own widths)
+    min_weight_frac: float = Field(0.003, ge=0.0, le=0.02)  # lightest stroke: 6 px = about 1.6 pt, still above KDP's 0.75 pt minimum
+    target_ink: float = Field(0.12, ge=0.02, le=0.4)  # the weight is chosen so ink covers about this share of the page: sparse drawings get bold lines, dense ones thin lines
     bridge_frac: float = Field(0.015, ge=0.0, le=0.05)  # open stroke ends are joined to ink found ahead within this fraction of the art width
     min_stroke_frac: float = Field(0.02, ge=0.0, le=0.2)  # isolated strokes shorter than this fraction of the art width are dropped (hatching, ticks)
 
