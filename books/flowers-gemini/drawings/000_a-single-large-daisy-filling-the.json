@@ -1,0 +1,1 @@
+{"title":"Large Daisy","canvas":[1000,1500],"stroke":14,"shapes":[{"type":"dot","c":[500,750],"r":120},{"type":"repeat","count":18,"center":[500,750],"start":0,"shapes":[{"type":"petal","c":[500,750],"r_inner":120,"length":380,"width":150,"angle":-90}]}]}

@@ -1,0 +1,1 @@
+{"title":"Hibiscus Flower","canvas":[1000,1500],"stroke":14,"shapes":[{"type":"repeat","count":5,"center":[500,750],"start":-90,"shapes":[{"type":"petal","c":[500,750],"r_inner":100,"length":400,"width":100,"angle":0}]},{"type":"circle","c":[500,750],"r":100},{"type":"curve","points":[[500,750],[520,650],[540,500],[560,350]],"closed":false},{"type":"dot","c":[560,350],"r":40}]}
