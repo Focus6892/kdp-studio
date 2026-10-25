@@ -24,10 +24,11 @@ from flask import Flask, abort, redirect, render_template, request, send_file, u
 from .. import keys as keymod
 from ..env import key_status
 from ..paths import cli_command, data_path, project_root
+from ..bookgen import manuscript_stats
 from ..publish.checklist import artifacts_for, build_checklist
 from ..publish.quota import quota_status
 from ..publish.store import PublishStore
-from ..schema import ColoringInterior, load_book
+from ..schema import ColoringInterior, StoryInterior, load_book
 
 FORMATS = ("paperback", "ebook", "hardcover")
 
@@ -92,8 +93,9 @@ def discover_books(dirs: list[Path]) -> list[dict]:
                         status = "PASS" if not rep.get("errors") and not [f for f in rep.get("findings", []) if f.get("level") == "error"] else "FAIL"
                     except Exception:  # noqa: BLE001
                         status = "?"
+                stats = manuscript_stats(book.book_dir, book.interior.manuscript_dir, book.interior.chapters_glob) if isinstance(book.interior, StoryInterior) else None
                 entry.update(
-                    id=book.id, title=book.metadata.full_title, type=book.type, formats=list(book.formats),
+                    id=book.id, title=book.metadata.full_title, type=book.type, formats=list(book.formats), chapters=stats and stats["total"], words=stats and stats["words"],
                     interior=(build / "interior.pdf").is_file(), cover=(build / "cover_wrap.pdf").is_file(), ebook=any(build.glob("*.epub")),
                     cover_jpg=str(build / "cover_ebook.jpg") if (build / "cover_ebook.jpg").is_file() else None,
                     preflight=status, provider=getattr(book.interior, "source", None) and book.interior.source.provider if isinstance(book.interior, ColoringInterior) else "story",
@@ -281,8 +283,13 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
             s.close()
         art = artifacts_for(b, fmt)
         runs = sorted((p for p in runs_dir.glob(f"*-{b.id}-*") if p.is_dir()), reverse=True)[:5] if runs_dir.is_dir() else []
+        from ..llm import claude_available, cloudflare_available
+
+        is_story = isinstance(b.interior, StoryInterior)
+        story = manuscript_stats(b.book_dir, b.interior.manuscript_dir, b.interior.chapters_glob) if is_story else None
         return render_template("book.html", idx=idx, e=entry, b=b, fmt=fmt, checklist=checklist, art={k: (str(v) if v else None) for k, v in art.items()}, title_rows=title_rows, runs=[r.name for r in runs],
-                               providers=["auto", "placeholder", "spec", "local", "pollinations", "cloudflare", "openai", "google", "stability"], is_coloring=isinstance(b.interior, ColoringInterior))
+                               providers=["auto", "placeholder", "spec", "local", "pollinations", "cloudflare", "openai", "google", "stability"], is_coloring=isinstance(b.interior, ColoringInterior),
+                               is_story=is_story, story=story, brief_exists=(b.book_dir / "story_brief.yaml").is_file(), llm_ready=claude_available() or cloudflare_available())
 
     @app.post("/book/<int:idx>/build")
     def build(idx: int):
@@ -391,7 +398,9 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
         j = jobs.get(job_id)
         if j is None:
             abort(404)
-        return render_template("job.html", job=j, idx=j.get("book_idx"))
+        idx = j.get("book_idx")
+        items = books() if idx is not None else []
+        return render_template("job.html", job=j, idx=idx, book_type=items[idx].get("type") if idx is not None and 0 <= idx < len(items) else None)
 
     @app.get("/jobs/<job_id>/log")
     def job_log(job_id: str):
@@ -399,6 +408,25 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
         if j is None:
             abort(404)
         return {"status": j["status"], "log": j["log"][-400:], "returncode": j["returncode"]}
+
+    @app.get("/book/<int:idx>/story-progress")
+    def story_progress(idx: int):
+        """Chapters drafted / total, words, whether a draft job is running, and the build outputs of a story book."""
+        _, b = book_at(idx)
+        if not isinstance(b.interior, StoryInterior):
+            abort(404)
+        st = manuscript_stats(b.book_dir, b.interior.manuscript_dir, b.interior.chapters_glob)
+        running = any(j["status"] == "running" and j.get("book_idx") == idx and j["title"].startswith("viết nháp") for j in jobs.all())
+        drafted = [c for c in st["chapters"] if not c["skeleton"]]
+        last = max(drafted, key=lambda c: Path(c["path"]).stat().st_mtime)["title"] if drafted else None
+        build = b.build_dir
+        epub = next(iter(sorted(build.glob("*.epub"))), None)
+
+        def link(f):
+            return url_for("file_view", p=str(f)) if f and Path(f).is_file() else None
+
+        return {"drafted": st["drafted"], "total": st["total"], "words": st["words"], "running": running, "last": last,
+                "pdf": link(build / "interior.pdf"), "epub": link(epub), "cover": link(build / "cover_wrap.pdf")}
 
     # ---------------------------------------------------------------- settings: API keys
     @app.get("/settings")
@@ -441,13 +469,21 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
         removed = keymod.remove_env([keymod.var_name(v, n) for v in prov["vars"]])
         return redirect(url_for("settings", m=("Đã xoá: " + ", ".join(removed)) if removed else "Không có gì để xoá"))
 
-    # ---------------------------------------------------------------- create a new coloring book
+    # ---------------------------------------------------------------- create a new book (coloring, or story = paperback + Kindle eBook)
+    PROVIDERS = ["auto", "cloudflare", "local", "spec", "placeholder", "pollinations", "openai", "google", "stability"]
+
+    def create_page(kind: str, error: str | None = None, provider: str | None = None):
+        from ..bookgen import STORY_GENRES, STORY_TRIMS
+        from ..interior.failover import default_chain
+        from ..llm import claude_available, cloudflare_available
+
+        default = provider or ("auto" if default_chain() else "local")  # auto = every configured account, then the GPU; nothing configured -> the GPU alone
+        return render_template("create.html", kind="story" if kind == "story" else "coloring", providers=PROVIDERS, default_provider=default, error=error,
+                               genres=STORY_GENRES, trims=STORY_TRIMS, llm_ready=claude_available() or cloudflare_available(), form=request.form)
+
     @app.get("/create")
     def create_form():
-        from ..interior.failover import default_chain
-
-        default = "auto" if default_chain() else "local"  # auto = every configured account, then the GPU; nothing configured -> the GPU alone
-        return render_template("create.html", providers=["auto", "cloudflare", "local", "spec", "placeholder", "pollinations", "openai", "google", "stability"], default_provider=default, error=None)
+        return create_page(request.args.get("kind", "coloring"))
 
     @app.post("/create")
     def create_book():
@@ -463,13 +499,59 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
                 subjects=[ln.strip() for ln in (f.get("subjects") or "").splitlines() if ln.strip()],
             )
         except Exception as exc:  # noqa: BLE001
-            return render_template("create.html", providers=["auto", "local", "spec", "placeholder", "cloudflare", "pollinations", "openai", "google", "stability"], default_provider=f.get("provider") or "local", error=str(exc))
+            return create_page("coloring", error=str(exc), provider=f.get("provider") or "local")
+        return redirect(url_for("book", idx=register_book(path)))
+
+    def register_book(path: Path) -> int:
+        """Make a freshly written book.yaml visible in the list and return its index."""
         if path.parent.parent not in dirs:
             dirs.append(path.parent.parent)
         for i, b in enumerate(books()):
             if Path(b["path"]).resolve() == path.resolve():
-                return redirect(url_for("book", idx=i))
-        return redirect(url_for("index"))
+                return i
+        abort(500)
+
+    def start_draft(idx: int, polish: bool = False) -> str:
+        """`kdp story draft` for a story book as a background job: bible -> outline -> chapters into its manuscript folder."""
+        entry, b = book_at(idx)
+        if not isinstance(b.interior, StoryInterior):
+            abort(400)
+        brief = b.book_dir / "story_brief.yaml"
+        if not brief.is_file():
+            raise FileNotFoundError(f"không thấy {brief}: tạo file brief (xem examples/lantern-lane/story_brief.yaml) rồi thử lại")
+        cmd = cli_command(["story", "draft", "--brief", str(brief), "--out", str(b.book_dir / b.interior.manuscript_dir)]) + (["--polish"] if polish else [])
+        return jobs.start(f"viết nháp {entry['folder']}", cmd, book_idx=idx)
+
+    @app.post("/create/story")
+    def create_story():
+        from ..bookgen import new_story_book
+
+        f = request.form
+        try:
+            path = new_story_book(
+                root=app.config["BOOKS_ROOT"], folder=f.get("folder", ""), title=f.get("title", ""), subtitle=f.get("subtitle") or None, author=f.get("author", ""),
+                genre=f.get("genre", ""), premise=f.get("premise", ""), audience=f.get("audience") or "adults", chapters=int(f.get("chapters") or 8),
+                words_per_chapter=int(f.get("words_per_chapter") or 1500), formats=f.getlist("formats") or None, trim=f.get("trim") or "5x8",
+                price=float(f.get("price") or 9.99), ebook_price=float(f.get("ebook_price") or 2.99),
+                keywords=[k.strip() for k in (f.get("keywords") or "").split(",") if k.strip()],
+                outline=[ln.strip() for ln in (f.get("outline") or "").splitlines() if ln.strip()],
+                setting=f.get("setting") or None, tone=f.get("tone") or "warm, gently humorous, hopeful",
+                draft_ai=bool(f.get("draft_now")) or not f.get("human_text"),  # drafting now means AI text whatever the box says
+            )
+        except Exception as exc:  # noqa: BLE001
+            return create_page("story", error=str(exc))
+        idx = register_book(path)
+        if f.get("draft_now"):
+            return redirect(url_for("job", job_id=start_draft(idx)))
+        return redirect(url_for("book", idx=idx))
+
+    @app.post("/book/<int:idx>/draft")
+    def draft(idx: int):
+        try:
+            job_id = start_draft(idx, polish=bool(request.form.get("polish")))
+        except FileNotFoundError as exc:
+            return redirect(url_for("book", idx=idx, m=str(exc)))
+        return redirect(url_for("job", job_id=job_id))
 
     @app.post("/create/suggest")
     def create_suggest():

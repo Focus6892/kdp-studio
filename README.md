@@ -106,11 +106,14 @@ python -m kdp_studio build examples/lantern-lane/book.yaml
 # Kiểm tra lại EPUB (cấu trúc EPUB 3) và chạy Kindle Previewer nếu đã cài
 python -m kdp_studio story check examples/lantern-lane/book.yaml
 
-# Viết bản thảo bằng Claude: brief -> story bible -> outline -> từng chương (-> --polish biên tập lại)
+# Viết bản thảo: brief -> story bible -> outline -> từng chương (-> --polish biên tập lại). Claude khi có ANTHROPIC_API_KEY,
+# không thì Llama 3.3 trên Cloudflare Workers AI (miễn phí, cùng key với vẽ ảnh); PROVENANCE.md ghi lại engine đã dùng
 python -m kdp_studio story draft --brief examples/lantern-lane/story_brief.yaml --out drafts/lantern-lane
 ```
 
 Bản thảo là thư mục `manuscript/` với `chapters/*.md` (dòng `# Tiêu đề` đầu file là tên chương; `***` là ngắt cảnh; `--` thành gạch ngang dài; ngoặc kép thẳng thành ngoặc cong), tùy chọn `dedication.md`, `epigraph.md`, `about-author.md`, `also-by.md`, `review-cta.md`. Khối `interior` trong `book.yaml` ([ví dụ](examples/lantern-lane/book.yaml)) chọn font, cỡ chữ, lề, nhãn chương, front/back matter.
+
+**Tạo truyện chữ từ giao diện (2026-10-25).** Trang **Tạo sách** có hai tab: *Sách tô màu* và *Truyện chữ + eBook*. Tab truyện hỏi thư mục, tiêu đề, bút danh, thể loại, tiền đề, bối cảnh, giọng văn, số chương, số từ mỗi chương, khổ in (5x8 … 6x9), giá in và giá eBook, từ khoá và dàn ý (mỗi dòng một chương `Tên chương: chuyện gì xảy ra`); **Gợi ý điền tất cả** hoàn thiện các ô còn trống cho khớp nhau (Claude → Cloudflare Workers AI → mẫu có sẵn, `kind=story` trên cùng route `/create/suggest`). **Tạo** sinh `book.yaml` (`type: story`, `formats: [paperback, ebook]`, `pricing.ebook_list_price`, category theo thể loại, `provenance.text: ai_generated` kèm tên công cụ để khai báo với KDP, hoặc `human` khi bạn tự viết), `story_brief.yaml` cho `kdp story draft` và một file Markdown mỗi chương chứa dòng dàn ý (`bookgen.new_story_book`). Trên trang sách, **Viết nháp các chương** chạy `kdp story draft` nền với log và thanh tiến trình (số chương đã có nội dung, số từ, chương mới nhất); các khung chương chưa viết được thay bằng chương AI viết, file bạn viết tay giữ nguyên. Sau đó Build như mọi truyện chữ: `interior.pdf`, `.epub`, bìa, preflight; hàng đợi đăng điền paperback rồi eBook.
 
 Những gì builder bảo đảm cho KDP: trang = trim (không bleed), gutter nâng tự động theo số trang (0.375"–0.875"), mọi font nhúng dạng TrueType subset (Helvetica mặc định của reportlab bị thay thế), chương bắt đầu trang lẻ với trang trống chèn tự động, running head và số trang không xuất hiện ở front matter/trang mở chương/trang trống, tổng số trang chẵn và ≥ 24 (chèn trang trống khi `pad_to_min_pages`). EPUB 3: `mimetype` đứng đầu không nén, OPF/nav/NCX, XHTML hợp lệ không entity, bìa `cover-image`; validator nội bộ kiểm tra đúng những lỗi KDP và epubcheck hay bắt. Không cần Pandoc, Typst hay Java.
 

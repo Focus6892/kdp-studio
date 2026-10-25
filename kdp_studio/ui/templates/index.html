@@ -18,7 +18,7 @@
 <td>{% if b.cover_jpg %}<a href="{{ url_for('book', idx=loop.index0) }}"><img class="thumb" src="{{ url_for('file_view', p=b.cover_jpg) }}" alt=""></a>{% else %}<div class="thumb empty">{{ icon('image', 18) }}</div>{% endif %}</td>
 <td>{% if b.error %}<span class="bad">{{ b.folder }}</span><div class="muted">{{ b.error }}</div>{% else %}<a href="{{ url_for('book', idx=loop.index0) }}"><b>{{ b.title }}</b></a><div class="muted">{{ b.id }} · {{ b.folder }} {% for f in b.formats or [] %}<span class="pill">{{ f }}</span>{% endfor %}</div>{% endif %}</td>
 <td>{{ b.type }}</td>
-<td class="muted">{% if b.type == 'coloring' %}{{ b.provider }}{% if b.drawings %} · {{ b.drawings }} bản vẽ{% endif %} · {{ b.images }} trang{% else %}truyện{% endif %}</td>
+<td class="muted">{% if b.type == 'coloring' %}{{ b.provider }}{% if b.drawings %} · {{ b.drawings }} bản vẽ{% endif %} · {{ b.images }} trang{% else %}truyện · {{ b.chapters or 0 }} chương · {{ '{:,}'.format(b.words or 0) }} từ{% endif %}</td>
 <td><span class="chip {{ 'ok' if b.interior else '' }}">{{ icon('check' if b.interior else 'clock', 12) }} ruột</span><span class="chip {{ 'ok' if b.cover else '' }}">{{ icon('check' if b.cover else 'clock', 12) }} bìa</span>{% if b.ebook %}<span class="chip ok">epub</span>{% endif %}
 {% if b.preflight == 'PASS' %}<span class="chip ok">{{ icon('shield', 12) }} PASS</span>{% elif b.preflight %}<span class="chip bad">{{ b.preflight }}</span>{% endif %}</td>
 <td>{% for f in b.formats or [] %}{% set t = titles.get((b.id, f)) %}{% if t %}<div>{{ f }}: <b>{{ t.status }}</b>{% if t.asin %} {{ t.asin }}{% endif %}</div>{% endif %}{% endfor %}</td>

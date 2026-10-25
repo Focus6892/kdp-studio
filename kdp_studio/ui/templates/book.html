@@ -10,6 +10,7 @@
 <div class="actions"><form class="inline" method="post" action="{{ url_for('open_folder', idx=idx) }}"><button class="secondary">{{ icon('folder') }} Mở thư mục sách</button></form></div>
 </div>
 
+{% if request.args.get("m") %}<div class="card"><span class="warn">{{ icon('alert') }} {{ request.args.get("m") }}</span></div>{% endif %}
 <div class="grid-2">
 <div class="card"><h2>{{ icon('zap') }} Build ruột + bìa + preflight</h2>
 <form method="post" action="{{ url_for('build', idx=idx) }}">
@@ -35,6 +36,18 @@
 </div>
 </div>
 {% if is_coloring %}{% include "_progress.html" %}{% endif %}
+{% if is_story %}
+<div class="card"><h2>{{ icon('edit') }} Bản thảo · {{ story.drafted }}/{{ story.total }} chương có nội dung · {{ '{:,}'.format(story.words) }} từ</h2>
+<form method="post" action="{{ url_for('draft', idx=idx) }}" class="row" style="margin-bottom:10px">
+<button {% if not brief_exists %}disabled{% endif %}>{{ icon('sparkles') }} Viết nháp các chương (AI)</button>
+<label style="font-weight:400"><input type="checkbox" name="polish" value="1"> biên tập lại từng chương (<code>--polish</code>, chậm gấp đôi)</label>
+<span class="muted">bible → dàn ý → từng chương theo <code>story_brief.yaml</code>; các khung chương chưa viết được thay bằng chương mới, file bạn viết tay vẫn giữ (xoá tay nếu trùng số).{% if not llm_ready %} Cần key Anthropic hoặc Cloudflare (Cài đặt).{% endif %}{% if not brief_exists %} Chưa có <code>story_brief.yaml</code> trong thư mục sách.{% endif %}</span>
+</form>
+{% if story.chapters %}<table>{% for c in story.chapters %}<tr><td class="muted">{{ loop.index }}</td><td><a href="{{ url_for('file_view', p=c.path) }}">{{ c.title }}</a></td><td>{% if c.skeleton %}<span class="chip">khung</span>{% else %}<span class="chip ok">{{ '{:,}'.format(c.words) }} từ</span>{% endif %}</td><td class="muted">{{ c.file }}</td></tr>{% endfor %}</table>{% else %}<p class="muted">Chưa có chương nào trong <code>{{ b.interior.manuscript_dir }}/chapters</code>.</p>{% endif %}
+<p class="muted" style="margin-top:8px">Mỗi chương là một file Markdown, dòng đầu <code># Tên chương</code>, <code>***</code> là ngắt cảnh. Khi mọi chương đã có nội dung, bấm Build: ra <code>interior.pdf</code> ({{ b.print_.trim }}), <code>.epub</code> cho Kindle, bìa và preflight.</p>
+</div>
+{% include "_story_progress.html" %}
+{% endif %}
 <div class="card"><details><summary>{{ icon('list', 14) }} Checklist nhập tay ({{ fmt }}){% for f in b.formats %}{% if f != fmt %} · <a href="{{ url_for('book', idx=idx, fmt=f) }}">{{ f }}</a>{% endif %}{% endfor %}</summary>
 <pre class="light" style="margin-top:10px">{{ checklist }}</pre></details></div>
 {% endblock %}

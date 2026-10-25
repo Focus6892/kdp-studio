@@ -18,7 +18,7 @@ Bấm đúp **start.bat** (hoặc `python -m kdp_studio ui`). Trình duyệt m�
 ## 3. Luồng làm một cuốn sách
 
 1. **Cài đặt** → dán key (Cloudflare miễn phí là đủ để bắt đầu; có thể bỏ qua nếu dùng GPU hoặc bản vẽ vector) → **Kiểm tra**.
-2. **Tạo sách** → gõ thư mục hoặc chủ đề → **Gợi ý điền tất cả** → **Tạo**.
+2. **Tạo sách** → tab *Sách tô màu* hoặc *Truyện chữ + eBook* → gõ thư mục hoặc chủ đề → **Gợi ý điền tất cả** → **Tạo** (truyện: trang sách có nút **Viết nháp các chương** để AI viết theo dàn ý, rồi Build ra PDF in + EPUB).
 3. Trang sách → **Build**. Ô "Tiến trình tạo ruột" hiện số trang xong, số lần sinh lại, ảnh thu nhỏ; xong có `interior.pdf` và `cover_wrap.pdf`, preflight báo PASS.
 4. **Hàng đợi** → tick sách → **Thêm vào hàng đợi** → **Chạy tựa kế tiếp còn quota**: một cửa sổ console mở Edge, tool điền từng tab KDP và dừng ở mỗi cổng cho bạn duyệt; bạn tự bấm Publish.
 

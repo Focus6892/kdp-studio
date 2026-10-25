@@ -214,7 +214,7 @@ def _user_prompt(given: dict, images: int, overwrite: bool) -> str:
     return "\n".join(lines)
 
 
-def _claude(given: dict, images: int, overwrite: bool, api_key: str) -> tuple[dict, str]:
+def _claude(system: str, user: str, out_model: type[BaseModel], max_tokens: int, api_key: str) -> tuple[dict, str]:
     try:
         import anthropic
     except ImportError:
@@ -222,8 +222,7 @@ def _claude(given: dict, images: int, overwrite: bool, api_key: str) -> tuple[di
     model = os.environ.get("KDP_STUDIO_CLAUDE_MODEL", "claude-opus-5-5")
     client = anthropic.Anthropic(api_key=api_key)
     try:
-        resp = client.messages.parse(model=model, max_tokens=min(16000, 2500 + 24 * images), system=SYSTEM,
-                                     messages=[{"role": "user", "content": _user_prompt(given, images, overwrite)}], output_format=LLMOut)
+        resp = client.messages.parse(model=model, max_tokens=max_tokens, system=system, messages=[{"role": "user", "content": user}], output_format=out_model)
     except anthropic.APIStatusError as exc:
         raise SuggestError(f"HTTP {exc.status_code}: {_short(exc)}") from None
     except anthropic.APIConnectionError as exc:
@@ -233,15 +232,14 @@ def _claude(given: dict, images: int, overwrite: bool, api_key: str) -> tuple[di
     return resp.parsed_output.model_dump(), model
 
 
-def _cloudflare(given: dict, images: int, overwrite: bool) -> tuple[dict, str]:
+def _cloudflare(system: str, user: str, json_shape: str, max_tokens: int) -> tuple[dict, str]:
     """Workers AI text models, trying every configured Cloudflare account (cloudflare, cloudflare#2 ...) that is not
     blocked in the provider state; an account that answers 429 is blocked until its reset time, like for images."""
     from .interior.failover import ProviderState
     from .interior.generate import ProviderQuota
 
-    body = {"messages": [{"role": "system", "content": SYSTEM + " Respond with one JSON object only - no prose, no code fences - shaped like: " + JSON_SHAPE},
-                         {"role": "user", "content": _user_prompt(given, images, overwrite)}],
-            "max_tokens": min(4096, 1500 + 24 * images), "temperature": 0.6}
+    body = {"messages": [{"role": "system", "content": system + " Respond with one JSON object only - no prose, no code fences - shaped like: " + json_shape},
+                         {"role": "user", "content": user}], "max_tokens": min(4096, max_tokens), "temperature": 0.6}
     models = tuple(m for m in (os.environ.get("KDP_STUDIO_CF_TEXT_MODEL"),) if m) + CF_TEXT_MODELS
     state = ProviderState()
     accounts = [p for p in keymod.profiles("cloudflare") if p["complete"]]
@@ -296,20 +294,18 @@ def _merge(llm: dict | None, offline: dict, given: dict, images: int, overwrite:
     return out
 
 
-def suggest(form: dict, *, overwrite: bool = False, engine: str | None = None) -> dict:
-    """All eight form fields, completed to match each other. Returns {fields, source, source_label, notes, images}."""
-    given, images = parse_form(form)
+def run_engines(system: str, user: str, out_model: type[BaseModel], json_shape: str, max_tokens: int, engine: str | None = None) -> tuple[dict | None, str, str, list[str]]:
+    """Try the engines in order (the given engine or env KDP_STUDIO_SUGGEST): (model fields or None, source, label, notes)."""
     engine = (engine or os.environ.get("KDP_STUDIO_SUGGEST") or "auto").strip().lower()
     if engine not in ("auto", "claude", "cloudflare", "offline"):
         engine = "auto"
-    offline = offline_text(given, images, overwrite)
     vals = keymod.current_values()
     llm: dict | None = None
     source, label, notes = "offline", "mẫu có sẵn (không cần key)", []
     if engine in ("auto", "claude"):
         if vals.get("ANTHROPIC_API_KEY"):
             try:
-                llm, model = _claude(given, images, overwrite, vals["ANTHROPIC_API_KEY"])
+                llm, model = _claude(system, user, out_model, max_tokens, vals["ANTHROPIC_API_KEY"])
                 source, label = "claude", f"Claude ({model})"
             except Exception as exc:  # noqa: BLE001 - fall through to the next engine, tell the user why
                 notes.append(f"Claude: {_short(exc)}")
@@ -318,7 +314,7 @@ def suggest(form: dict, *, overwrite: bool = False, engine: str | None = None) -
     if llm is None and engine in ("auto", "cloudflare"):
         if any(p["complete"] for p in keymod.profiles("cloudflare")):
             try:
-                llm, model = _cloudflare(given, images, overwrite)
+                llm, model = _cloudflare(system, user, json_shape, max_tokens)
                 source, label = "cloudflare", f"Cloudflare Workers AI ({model})"
             except Exception as exc:  # noqa: BLE001
                 notes.append(f"Cloudflare: {_short(exc)}")
@@ -326,6 +322,19 @@ def suggest(form: dict, *, overwrite: bool = False, engine: str | None = None) -
             notes.append("Cloudflare: chưa có CF_ACCOUNT_ID / CF_API_TOKEN (thêm ở Cài đặt)")
     if engine == "auto" and llm is None and not notes:
         notes.append("chưa có key Anthropic hay Cloudflare nên dùng thư viện mẫu; thêm key ở Cài đặt để gợi ý sát chủ đề hơn")
+    return llm, source, label, notes
+
+
+def suggest(form: dict, *, overwrite: bool = False, engine: str | None = None) -> dict:
+    """All form fields, completed to match each other: {fields, source, source_label, notes, images, kind}. A form with
+    kind=story (premise, chapter outline, keywords of a text book) is handled by suggest_story."""
+    if str(form.get("kind") or "").strip().lower() == "story":
+        from .suggest_story import suggest_story
+
+        return suggest_story(form, overwrite=overwrite, engine=engine)
+    given, images = parse_form(form)
+    offline = offline_text(given, images, overwrite)
+    llm, source, label, notes = run_engines(SYSTEM, _user_prompt(given, images, overwrite), LLMOut, JSON_SHAPE, min(16000, 2500 + 24 * images), engine)
     out = _merge(llm, offline, given, images, overwrite)
     fields = {**{k: out[k] for k in TEXT_FIELDS}, "keywords": ", ".join(out["keywords"]), "subjects": "\n".join(out["subjects"])}
-    return {"fields": fields, "source": source, "source_label": label, "notes": notes, "images": images, "overwrite": overwrite}
+    return {"fields": fields, "source": source, "source_label": label, "notes": notes, "images": images, "overwrite": overwrite, "kind": "coloring"}

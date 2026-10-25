@@ -1,8 +1,51 @@
 {% extends "base.html" %}{% from "_icons.html" import icon %}{% block title %}Tạo sách · kdp-studio{% endblock %}
 {% block body %}
-<div class="page-head"><div><h1>Tạo sách tô màu mới</h1><p class="sub">Gõ vài ô (chỉ thư mục hoặc chủ đề cũng đủ), bấm <b>Gợi ý</b> để tool hoàn thiện phần còn lại, rồi <b>Tạo</b>.</p></div></div>
+<div class="page-head"><div><h1>Tạo sách mới</h1><p class="sub">Chọn loại sách, gõ vài ô (chỉ thư mục hoặc chủ đề cũng đủ), bấm <b>Gợi ý</b> để tool hoàn thiện phần còn lại cho khớp nhau, rồi <b>Tạo</b>.</p></div>
+<div class="actions"><a class="btn {{ 'secondary' if kind != 'coloring' else '' }}" href="{{ url_for('create_form', kind='coloring') }}">{{ icon('image') }} Sách tô màu</a><a class="btn {{ 'secondary' if kind != 'story' else '' }}" href="{{ url_for('create_form', kind='story') }}">{{ icon('book') }} Truyện chữ + eBook</a></div></div>
 {% if error %}<div class="card" style="border-color:#f3b4b4"><span class="bad">{{ icon('alert') }} {{ error }}</span></div>{% endif %}
-<form method="post" action="{{ url_for('create_book') }}" id="create-form">
+{% if kind == 'story' %}
+<form method="post" action="{{ url_for('create_story') }}" id="create-form"><input type="hidden" name="kind" value="story">
+<div class="grid-2">
+<div class="card"><h2>{{ icon('edit') }} Câu chuyện</h2>
+<div class="field"><label>Thư mục (không dấu, không cách)</label><input type="text" name="folder" required placeholder="lantern-lane" value="{{ form.folder or '' }}"></div>
+<div class="field"><label>Tiêu đề</label><input type="text" name="title" required placeholder="The Lantern Lane Letters" value="{{ form.title or '' }}"></div>
+<div class="field"><label>Phụ đề</label><input type="text" name="subtitle" placeholder="A Cozy Small-Town Story" value="{{ form.subtitle or '' }}"></div>
+<div class="field"><label>Tác giả (bút danh)</label><input type="text" name="author" required placeholder="June Alder" value="{{ form.author or '' }}"></div>
+<div class="field"><label>Thể loại</label><input type="text" name="genre" required list="genres" placeholder="cozy mystery" value="{{ form.genre or '' }}"><datalist id="genres">{% for g in genres %}<option value="{{ g }}">{% endfor %}</datalist></div>
+<div class="field"><label>Đối tượng</label><input type="text" name="audience" value="{{ form.audience or 'adults who enjoy gentle, feel-good fiction' }}"></div>
+<div class="field"><label>Tiền đề (2–4 câu: nhân vật, mong muốn, trở ngại, bối cảnh, điều đang bị đe doạ)</label><textarea name="premise" rows="4" required placeholder="In the river town of Alder Bend, a blue mailbox has quietly delivered letters to people who need them for forty years. When the new postmistress tries to retire it, the town's small kindnesses surface one letter at a time.">{{ form.premise or '' }}</textarea></div>
+<div class="field"><label>Bối cảnh</label><input type="text" name="setting" placeholder="a small river town in autumn" value="{{ form.setting or '' }}"></div>
+<div class="field"><label>Giọng văn</label><input type="text" name="tone" placeholder="warm, quietly funny, hopeful" value="{{ form.tone or '' }}"></div>
+</div>
+<div class="card"><h2>{{ icon('settings') }} Độ dài, định dạng, giá</h2>
+<div class="row" style="margin-bottom:12px">
+<label>Số chương <input type="number" name="chapters" value="{{ form.chapters or 8 }}" min="1" max="60" style="width:72px"></label>
+<label>Từ mỗi chương <input type="number" name="words_per_chapter" value="{{ form.words_per_chapter or 1500 }}" min="200" max="6000" step="100" style="width:90px"></label>
+<label>Khổ in <select name="trim">{% for t in trims %}<option {% if t == (form.trim or '5x8') %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+</div>
+<div class="row" style="margin-bottom:12px">
+<label style="font-weight:400"><input type="checkbox" name="formats" value="paperback" checked> paperback</label>
+<label style="font-weight:400"><input type="checkbox" name="formats" value="ebook" checked> Kindle eBook</label>
+<label>Giá in $ <input type="number" step="0.01" name="price" value="{{ form.price or '9.99' }}" style="width:84px"></label>
+<label>Giá eBook $ <input type="number" step="0.01" name="ebook_price" value="{{ form.ebook_price or '2.99' }}" style="width:84px"></label>
+</div>
+<div class="field"><label>Từ khoá (tối đa 7, cách nhau bằng dấu phẩy)</label><input type="text" name="keywords" placeholder="cozy mystery books, small town mystery, clean mystery series" value="{{ form.keywords or '' }}"></div>
+<div class="field"><label>Dàn ý (mỗi dòng một chương: <code>Tên chương: chuyện gì xảy ra</code>; để trống thì tool dựng khung ba hồi)</label><textarea name="outline" rows="10" placeholder="The Blue Mailbox: Ruth finds a letter with no name on it.&#10;First Steps: she decides to answer it herself.">{{ form.outline or '' }}</textarea></div>
+<div class="field"><label style="font-weight:400"><input type="checkbox" name="human_text" value="1" {% if form.human_text %}checked{% endif %}> Tôi sẽ tự viết toàn bộ, không dùng AI (khai báo <code>provenance.text: human</code>)</label></div>
+<div class="field"><label style="font-weight:400"><input type="checkbox" name="draft_now" value="1" {% if llm_ready %}checked{% else %}disabled{% endif %}> Viết nháp các chương ngay sau khi tạo (AI: bible → dàn ý → từng chương{% if not llm_ready %}; cần key Anthropic hoặc Cloudflare ở Cài đặt{% endif %})</label></div>
+</div>
+</div>
+<div class="card">
+<div class="row">
+<button type="button" class="secondary" id="suggest-btn" onclick="suggestAll()">{{ icon('sparkles') }} Gợi ý điền tất cả</button>
+<label class="muted" style="font-weight:400"><input type="checkbox" id="overwrite"> ghi đè cả ô đã điền</label>
+<span id="suggest-note" class="muted">Nguồn theo thứ tự: Claude (key Anthropic) → Cloudflare Workers AI → mẫu có sẵn, không cần key.</span>
+</div>
+<div class="row" style="margin-top:14px"><button>{{ icon('check') }} Tạo book.yaml, brief, dàn ý và mở trang sách</button> <span class="muted">Sau đó: viết nháp (AI) hoặc dán văn bản của bạn vào <code>manuscript/chapters</code>, rồi Build để có PDF in + EPUB + bìa.</span></div>
+</div>
+</form>
+{% else %}
+<form method="post" action="{{ url_for('create_book') }}" id="create-form"><input type="hidden" name="kind" value="coloring">
 <div class="grid-2">
 <div class="card"><h2>{{ icon('edit') }} Nội dung</h2>
 <div class="field"><label>Thư mục (không dấu, không cách)</label><input type="text" name="folder" required placeholder="ocean-animals"></div>
@@ -33,6 +76,7 @@
 <div class="row" style="margin-top:14px"><button>{{ icon('check') }} Tạo book.yaml và mở trang sách</button> <span class="muted">Sau đó bấm Build để sinh ruột, bìa và preflight; tiến trình hiện theo từng trang.</span></div>
 </div>
 </form>
+{% endif %}
 <script>
 async function suggestAll(){
   const form = document.getElementById('create-form'), note = document.getElementById('suggest-note'), btn = document.getElementById('suggest-btn');
@@ -51,5 +95,5 @@ async function suggestAll(){
 document.addEventListener('input', e => { if (e.target.classList) e.target.classList.remove('suggested'); });
 </script>
 <style>.suggested{background:#fff6d6}</style>
-<div class="card"><h2>{{ icon('info') }} Demo</h2><p class="muted">Cuốn mẫu <b>bold-easy-flowers</b> trong danh sách Sách dùng đúng luồng này (30 chủ đề hoa). Thử nhanh: gõ mỗi ô Thư mục, ví dụ <code>ocean-animals</code>, bấm <b>Gợi ý điền tất cả</b> rồi <b>Tạo</b>. Mở trang sách của nó để xem ô "Tiến trình tạo ruột": số trang đã xong trên tổng số, số lần sinh lại, giây mỗi trang và ảnh thu nhỏ các trang mới nhất; cuối cùng là liên kết PDF ruột và bìa.</p></div>
+<div class="card"><h2>{{ icon('info') }} Demo</h2>{% if kind == 'story' %}<p class="muted">Cuốn mẫu <b>lantern-lane</b> trong danh sách Sách là một truyện chữ 6 chương viết tay (paperback 5x8 + EPUB). Thử nhanh: gõ mỗi ô Thư mục, ví dụ <code>harbour-parrot</code>, bấm <b>Gợi ý điền tất cả</b> rồi <b>Tạo</b>: tool tạo <code>book.yaml</code> (paperback + eBook, giá riêng từng định dạng), <code>story_brief.yaml</code> và một file Markdown mỗi chương theo dàn ý. Trên trang sách bấm <b>Viết nháp các chương</b> để AI viết (Claude, hoặc Llama trên Cloudflare miễn phí), hoặc dán văn bản của bạn vào từng file. Build cho ra PDF in, EPUB cho Kindle và bìa; khi đăng, tool điền cả hai định dạng và dừng ở mỗi cổng cho bạn duyệt.</p>{% else %}<p class="muted">Cuốn mẫu <b>bold-easy-flowers</b> trong danh sách Sách dùng đúng luồng này (30 chủ đề hoa). Thử nhanh: gõ mỗi ô Thư mục, ví dụ <code>ocean-animals</code>, bấm <b>Gợi ý điền tất cả</b> rồi <b>Tạo</b>. Mở trang sách của nó để xem ô "Tiến trình tạo ruột": số trang đã xong trên tổng số, số lần sinh lại, giây mỗi trang và ảnh thu nhỏ các trang mới nhất; cuối cùng là liên kết PDF ruột và bìa.</p>{% endif %}</div>
 {% endblock %}

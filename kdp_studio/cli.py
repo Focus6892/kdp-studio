@@ -1142,7 +1142,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     story = sub.add_parser("story", help="text books: draft with Claude, check the EPUB")
     ssub = story.add_subparsers(dest="story_cmd", required=True)
-    p = ssub.add_parser("draft", help="draft a manuscript from story_brief.yaml with Claude (bible -> outline -> chapters)")
+    p = ssub.add_parser("draft", help="draft a manuscript from story_brief.yaml (bible -> outline -> chapters) with Claude, or Llama on Cloudflare Workers AI without an Anthropic key")
     p.add_argument("--brief", required=True)
     p.add_argument("--out", help="manuscript directory (default <brief dir>/manuscript)")
     p.add_argument("--model", default="claude-opus-5-5")

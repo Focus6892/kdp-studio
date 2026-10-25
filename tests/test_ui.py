@@ -129,3 +129,41 @@ def test_add_pick_remove_book_dirs_and_open_folder(client, tmp_path, monkeypatch
     assert "External Book" not in r.get_data(as_text=True) and "Picked Book" in r.get_data(as_text=True)
     assert "mặc định" in client.post("/books/remove-dir", data={"path": str(ROOT / "examples")}, follow_redirects=True).get_data(as_text=True)
 
+
+
+def test_create_story_book_and_draft_job(client, tmp_path, monkeypatch):
+    import sys
+
+    page = client.get("/create?kind=story").get_data(as_text=True)
+    assert 'name="premise"' in page and "Truyện chữ + eBook" in page
+    s = client.post("/create/suggest", json={"kind": "story", "folder": "harbour-parrot", "genre": "cozy mystery", "chapters": 6})
+    assert s.status_code == 200 and s.get_json()["kind"] == "story" and len(s.get_json()["fields"]["outline"].splitlines()) == 6
+    form = {"folder": "harbour-parrot", "title": "A Parrot Never Lies", "author": "Rosie Whitfield", "genre": "cozy mystery", "chapters": "4", "words_per_chapter": "1200",
+            "premise": "A bakery owner clears a friend's name after a theft at the harbour fair, with a parrot as the only witness.", "formats": ["paperback", "ebook"],
+            "trim": "5x8", "price": "9.99", "ebook_price": "2.99", "outline": "The Fair: Nell sees the theft."}
+    r = client.post("/create/story", data=form, follow_redirects=True)
+    page = r.get_data(as_text=True)
+    assert r.status_code == 200 and "A Parrot Never Lies" in page and "Viết nháp các chương" in page and "The Fair" in page and "0/4 chương" in page
+    book_dir = tmp_path / "books" / "harbour-parrot"
+    assert (book_dir / "book.yaml").is_file() and (book_dir / "story_brief.yaml").is_file() and len(list((book_dir / "manuscript" / "chapters").glob("*.md"))) == 4
+    idx = int(r.request.path.rsplit("/", 1)[1])
+    prog = client.get(f"/book/{idx}/story-progress").get_json()
+    assert prog == {"drafted": 0, "total": 4, "words": 0, "running": False, "last": None, "pdf": None, "epub": None, "cover": None}
+    home = client.get("/").get_data(as_text=True)
+    assert "A Parrot Never Lies" in home and "4 chương" in home
+    jobs = client.application.extensions["jobs"]
+    real = jobs.start("viết nháp harbour-parrot", [sys.executable, "-c", "print('hi')"], book_idx=idx)
+    job_page = client.get(f"/jobs/{real}").get_data(as_text=True)
+    assert "Tiến trình viết nháp" in job_page and f"/book/{idx}/story-progress" in job_page and "Tiến trình tạo ruột" not in job_page
+    started = []
+    monkeypatch.setattr(jobs, "start", lambda title, cmd, book_idx=None: started.append((title, cmd, book_idx)) or "job-x")
+    r = client.post(f"/book/{idx}/draft", data={"polish": "1"})
+    assert r.status_code == 302 and r.headers["Location"].endswith("/jobs/job-x")
+    title, cmd, bidx = started[0]
+    assert title == "viết nháp harbour-parrot" and bidx == idx and "draft" in cmd
+    assert cmd[-5:] == ["--brief", str(book_dir / "story_brief.yaml"), "--out", str(book_dir / "manuscript"), "--polish"]
+    r = client.post("/create/story", data={**form, "folder": "second-story", "draft_now": "1"})  # create + draft in one go
+    assert r.status_code == 302 and r.headers["Location"].endswith("/jobs/job-x") and started[-1][0] == "viết nháp second-story"
+    r = client.post("/create/story", data={**form, "folder": "Bad Folder"})  # the error re-renders the story tab with the typed values
+    page = r.get_data(as_text=True)
+    assert r.status_code == 200 and "Bad Folder" in page and 'name="premise"' in page and "Nell sees the theft" in page

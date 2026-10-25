@@ -15,7 +15,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
-from ..llm import DEFAULT_MODEL, parse_structured
+from ..bookgen import SKELETON_MARK
+from ..llm import DEFAULT_MODEL, last_engine, last_error, parse_structured
 from ..schema import AgeRange
 from .manuscript import count_words, slugify
 
@@ -118,7 +119,8 @@ SYSTEM = (
 
 def _require(obj, step: str):
     if obj is None:
-        raise RuntimeError(f"Claude was unavailable during the '{step}' step (check ANTHROPIC_API_KEY / `ant auth login`).")
+        raise RuntimeError(f"No language model answered during the '{step}' step ({last_error() or 'no reason recorded'}): "
+                           "add ANTHROPIC_API_KEY or a Cloudflare account (Cài đặt), wait for the quota to reset, and run the draft again.")
     return obj
 
 
@@ -138,6 +140,9 @@ def draft_story(brief: StoryBrief, out_dir: Path, model: str = DEFAULT_MODEL, po
     outline_path = out_dir / "outline.json"
     outline_path.write_text(outline.model_dump_json(indent=2), encoding="utf-8")
 
+    for stale in chapters_dir.glob("*.md"):  # chapter skeletons written by "Tạo sách" are replaced by the drafted chapters
+        if SKELETON_MARK in stale.read_text(encoding="utf-8", errors="replace"):
+            stale.unlink()
     files: list[Path] = []
     words = 0
     previous_tail = ""
@@ -166,10 +171,11 @@ def draft_story(brief: StoryBrief, out_dir: Path, model: str = DEFAULT_MODEL, po
         path.write_text(f"# {title}\n\n{text}\n", encoding="utf-8")
         files.append(path)
         words += count_words(text)
+        say(f"  chapter {plan.number} written: {count_words(text):,} words -> {path.name}")
         previous_tail = " ".join(text.split()[-120:])
 
     (out_dir / "PROVENANCE.md").write_text(
-        f"# Provenance\n\nDrafted with Claude ({model}) from story_brief.yaml on this machine. For KDP this manuscript is **AI-generated text** and must be declared "
+        f"# Provenance\n\nDrafted with {last_engine() or model} from story_brief.yaml on this machine. For KDP this manuscript is **AI-generated text** and must be declared "
         f"(set `provenance.text: ai_generated` in book.yaml). Human edits do not change that classification.\n",
         encoding="utf-8",
     )

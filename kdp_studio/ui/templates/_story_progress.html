@@ -1,0 +1,19 @@
+{% from "_icons.html" import icon %}<div class="card" id="story-progress-card"><h2>{{ icon('loader') }} Tiến trình viết nháp</h2>
+<div class="progress"><div id="sbar"></div></div>
+<p id="story-progress-text" class="muted">đang đọc…</p>
+<p id="story-links"></p>
+</div>
+<script>
+async function pollStory(){
+  try {
+    const r = await fetch('{{ url_for("story_progress", idx=idx) }}'); const d = await r.json();
+    document.getElementById('sbar').style.width = (d.total ? Math.round(100 * d.drafted / d.total) : 0) + '%';
+    document.getElementById('story-progress-text').textContent = d.drafted + ' / ' + d.total + ' chương có nội dung · ' + d.words.toLocaleString() + ' từ' +
+      (d.last ? ' · mới nhất: ' + d.last : '') + (d.running ? ' · đang viết…' : ' · không có job nào đang chạy');
+    document.getElementById('story-links').innerHTML = (d.pdf ? '<a class="btn small" href="' + d.pdf + '" target="_blank">interior.pdf</a> ' : '') +
+      (d.epub ? '<a class="btn small" href="' + d.epub + '" target="_blank">EPUB (Kindle)</a> ' : '') + (d.cover ? '<a class="btn small secondary" href="' + d.cover + '" target="_blank">cover_wrap.pdf</a>' : '');
+    if (d.running) setTimeout(pollStory, 4000);
+  } catch (e) { document.getElementById('story-progress-text').textContent = 'mất kết nối, thử lại…'; setTimeout(pollStory, 5000); }
+}
+pollStory();
+</script>

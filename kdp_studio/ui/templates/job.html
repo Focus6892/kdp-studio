@@ -3,7 +3,7 @@
 <div class="page-head"><div><h1>{{ job.title }} <span id="status" class="chip warn">{{ job.status }}</span></h1>
 <p class="sub"><code>{{ job.cmd|join(' ') }}</code> · bắt đầu {{ job.started }}</p></div>
 <div class="actions">{% if idx is not none %}<a class="btn secondary" href="{{ url_for('book', idx=idx) }}">{{ icon('book') }} Trang sách</a>{% endif %}<a class="btn secondary" href="{{ url_for('index') }}">{{ icon('home') }} Về danh sách</a></div></div>
-{% if idx is not none %}{% include "_progress.html" %}{% endif %}
+{% if idx is not none %}{% if book_type == "story" %}{% include "_story_progress.html" %}{% else %}{% include "_progress.html" %}{% endif %}{% endif %}
 <div class="card"><h2>{{ icon('terminal') }} Log <label class="muted" style="font-weight:400;margin-left:auto"><input type="checkbox" id="follow" checked> tự cuộn</label></h2>
 <pre id="log">{{ job.log|join('\n') }}</pre></div>
 <script>
