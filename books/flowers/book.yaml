@@ -106,7 +106,7 @@ interior:
     max_tiny_white: 0.25  # SD1.5 + LoRA vẽ chi tiết hơn FLUX; nới ngưỡng để giữ đủ 30 trang đã vẽ (mặc định 0.10)
 cover:
   art:
-    provider: file       # tranh bìa do model cục bộ vẽ (DreamShaper-8, seed 21, prompt clipart bó hoa trên nền trắng), cắt sticker khi dựng
+    provider: file       # tranh bìa do model cục bộ vẽ trên GPU (DreamShaper-8, 768x1024, seed 55, prompt clipart bó hoa mẫu đơn + cúc trên nền trắng), chọn trong 5 seed; cắt sticker khi dựng
     path: cover_art.png
     sticker: true
   layout: poster
