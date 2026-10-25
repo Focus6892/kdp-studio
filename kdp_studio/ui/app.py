@@ -23,7 +23,7 @@ from flask import Flask, abort, redirect, render_template, request, send_file, u
 
 from .. import keys as keymod
 from ..env import key_status
-from ..paths import data_path, project_root
+from ..paths import cli_command, data_path, project_root
 from ..publish.checklist import artifacts_for, build_checklist
 from ..publish.quota import quota_status
 from ..publish.store import PublishStore
@@ -119,7 +119,7 @@ def _license_status() -> dict:
 
 def _spawn_console(args: list[str]) -> str:
     """Open a console window running `python -m kdp_studio <args>` so the human-in-the-loop prompts stay visible."""
-    cmd = [sys.executable, "-m", "kdp_studio", *args]
+    cmd = cli_command(args)
     if sys.platform.startswith("win"):
         subprocess.Popen(["cmd", "/c", "start", "kdp publish", "cmd", "/k", *cmd], cwd=str(project_root()))
     else:
@@ -287,7 +287,7 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
     @app.post("/book/<int:idx>/build")
     def build(idx: int):
         entry, _ = book_at(idx)
-        cmd = [sys.executable, "-X", "utf8", "-m", "kdp_studio", "build", entry["path"]]
+        cmd = cli_command(["build", entry["path"]])
         if request.form.get("images"):
             cmd += ["--images", request.form["images"]]
         if request.form.get("reuse_raw"):
@@ -298,7 +298,7 @@ def create_app(book_dirs: list[Path] | None = None) -> Flask:
     @app.post("/book/<int:idx>/image-test")
     def image_test(idx: int):
         entry, _ = book_at(idx)
-        cmd = [sys.executable, "-X", "utf8", "-m", "kdp_studio", "image-test", entry["path"], "--n", request.form.get("n", "3")]
+        cmd = cli_command(["image-test", entry["path"], "--n", request.form.get("n", "3")])
         if request.form.get("provider"):
             cmd += ["--provider", request.form["provider"]]
         job_id = jobs.start(f"image-test {entry['folder']}", cmd)

@@ -172,6 +172,10 @@ Mỗi nền tảng có thể có nhiều tài khoản: cùng tên biến với �
 
 Quota Cloudflare tính ra bao nhiêu ảnh: 10.000 neuron/ngày cho mỗi tài khoản; FLUX.1 schnell tính 4,8 neuron mỗi ô 512×512 cộng 9,6 neuron mỗi bước *trên mỗi ô* (đo 2026-10-24: khoảng 40 ảnh 1024² ở 6 bước làm hết quota, khớp ~250 neuron/ảnh). Tool giờ dùng 4 bước, mức schnell được thiết kế: ~173 neuron/ảnh → khoảng 55 ảnh/ngày/tài khoản, đủ một cuốn 30 trang kể cả sinh lại. Lập nhiều tài khoản của cùng một người để nhân hạn mức miễn phí có thể vi phạm điều khoản Cloudflare và bị khóa; khi cần nhiều hơn, gói Workers Paid (5 USD/tháng) tính 0,011 USD mỗi 1.000 neuron, tức khoảng 0,002 USD một ảnh, hoặc để chuỗi rơi sang GPU cục bộ.
 
+## Bản EXE dùng thử và key dùng thử
+
+`build_exe.ps1` (PyInstaller) tạo `dist/kdp-studio/kdp-studio.exe` cùng thư mục kèm và `dist/kdp-studio-<version>-win64.zip`: máy nhận không cần cài Python, bấm đúp là mở giao diện; dữ liệu (sách, `.env`, state, publishing) nằm trong `Documents\kdp-studio` (hoặc `KDP_STUDIO_HOME`), lần đầu chạy được chép sẵn sách mẫu. Bản EXE không kèm model GPU cục bộ và bộ lọc OWLv2 (quá nặng); phần đăng KDP dùng Edge/Chrome có sẵn trên máy. Key dùng thử cho mọi máy: `kdp license issue --key <license_private.pem> --to "Ban dung thu" --machine "*" --days 30` (verify chấp nhận `machine: "*"`); kèm `README-DUNG-THU.md` hướng dẫn người thử và xin góp ý. `kdp doctor` kiểm tra máy đích; `start.bat`/`install.ps1`/`package.ps1` là đường cài từ mã nguồn khi cần GPU.
+
 ## Chuyển sang máy khác và license
 
 1. Trên máy đích cài Python 3.11+ rồi chạy `install.ps1` (thêm `-UI` cho giao diện web, `-Local` cho model ảnh cục bộ). Script cài gói ở chế độ người dùng, tạo `.env` từ `.env.example`.

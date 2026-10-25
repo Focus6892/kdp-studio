@@ -174,6 +174,11 @@ def cmd_image_test(args) -> int:
 
 
 def cmd_local_setup(args) -> int:
+    from .paths import is_frozen
+
+    if is_frozen():
+        print("The packaged kdp-studio.exe does not include the local GPU model stack (torch/diffusers). Install kdp-studio from source with install.ps1 -Local to use provider 'local'.")
+        return 1
     """Install the local image stack (CUDA PyTorch + diffusers) and pre-download the model and LoRA."""
     import subprocess
 
