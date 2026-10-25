@@ -84,7 +84,7 @@ interior:
   - a tulip field under a round sun
   source:
     provider: local
-    seed: 7
+    seed: 8
     size: 1024x1536
     model: Lykon/dreamshaper-8
     lora: artificialguybr/coloringbook-redmond-1-5v-coloring-book-lora-for-liberteredmond-sd-1-5:ColoringBookRedmond15V-LiberteRedmond-ColoringBookAF.safetensors
